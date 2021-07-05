@@ -2,7 +2,7 @@ import numbers
 import os
 import mlflow
 from entities.experiment_config import ExperimentParams, ExperimentMetrics, ExperimentOutputArtifacts
-from utils.data_conversion_util import flatten
+from utils.data_manipulation_utils import flatten
 
 #TODO: need to set this up
 TRACKING_URL = ""
