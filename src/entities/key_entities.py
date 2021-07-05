@@ -1,5 +1,6 @@
-from typing import List
+from typing import List, Dict
 from pydantic import BaseModel
+from all_enums import TimeUnit, LossMetric, Distribution
 
 class TimeSeriesDataSpec(BaseModel):
     
