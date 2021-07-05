@@ -17,8 +17,10 @@ class BaseTimeSeriesModel(tf.keras.Model):
         return output
 
     def _get_data(cols, inputs):
-        #TODO: simpler to return tensors but feel free to choose otherwise 
-        return
+        #TODO: extracting relevant columns from inputs
+        #simpler to return tensors but feel free to choose otherwise 
+        #vals can be whatever we choose
+        return vals
 
     def _predict_one_step(dependent_state_vals,independent_state_vals,control_input_vals):
         # This is the main function to be implemented by the derived classes
@@ -35,6 +37,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # need to massage the dataset and config into appropriate form
         # There are two modes of computing accuracy: fixed lead or fixed anchor index + horizon
         # which can be used to fit the model - we can implement the latter one first
+        # sets the model params
         return
 
 
@@ -47,13 +50,15 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # In the fixed lead (say l), for every time point t that needs to be evaluated
         # we use the model to make predictions at t based on known observations at time (t-l) 
         # (or before) and then evaluate the accuracy
-        return
+        # loss_values is a list of values corresponding to the loss functions in the config
+        return loss_values
 
     def simple_predict(self,ts_data:TimeSeriesDataset,predict_config:PredictionConfig):
         # TODO: Same two models here as well. This prediction assumes that the ts_data 
         # actually has the control inputs (if any)  populated for the horizon 
         # need to raise an error if that is not true
-        return
+        # output_data is a TimeSeriesDataset
+        return output_data
 
 
     def simple_impute(self,ts_data:TimeSeriesDataset,impute_config:ImputationConfig):
