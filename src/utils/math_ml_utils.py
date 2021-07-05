@@ -12,3 +12,5 @@ def evaluate(ground_truth: pd.DataFrame, predictions: pd.DataFrame, loss_functio
 	#check if computation is column wise or cell wise; 
   	#compute accordingly and aggregate
 	return loss_values
+
+#TODO: offline evaluation utilities later
