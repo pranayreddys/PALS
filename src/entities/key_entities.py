@@ -32,8 +32,8 @@ class TimeSeriesDataSpec(BaseModel):
  class LossFunctionSpec(BaseModel):
     is_column_aggregation: bool
     is_cell_aggregation: bool
-	  metric_name: LossMetric
-	  column_weights: Dict[str,float]
+    metric_name: LossMetric
+    column_weights: Dict[str,float]
     
  class VariableSpec(BaseModel):
    #TODO: just the information needed to sample from tfp.distributions.Distribution
