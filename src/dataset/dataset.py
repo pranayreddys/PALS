@@ -1,9 +1,9 @@
 import pandas as pd
-from entities.key_entities import TabularDatasetSpec, TimeSeriesDatasetSpec
+from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 
 class TabularDataset(pd.DataFrame):
 
-	def _init_(self, _dataset_spec:TabularDatasetSpec):
+	def _init_(self, _dataset_spec:TabularDataSpec):
 		#TODO
 		# read the dataset from data source
 		# self.data
@@ -26,7 +26,7 @@ class TabularDataset(pd.DataFrame):
 
 class TimeSeriesDataset(pd.DataFrame):
 
-	def _init_(self, _dataset_spec:TimeSeriesDatasetSpec):
+	def _init_(self, _dataset_spec:TimeSeriesDataSpec):
 		#TODO
 		# read the dataset from data source
 		# self.data 
