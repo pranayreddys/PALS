@@ -23,6 +23,9 @@ class TabularDataset(pd.DataFrame):
     		#individual column - availability, distribution 
     		#pairwise correlations
  		return
+	def select_subset(self, row_selection_query, column_selection_query):
+		# TODO: use the selection_query to get a subset of rows and a list of columns
+		return df_subset
 
 class TimeSeriesDataset(pd.DataFrame):
 
@@ -51,3 +54,7 @@ class TimeSeriesDataset(pd.DataFrame):
  		# plot mean and variance across series ids for each series; ADF stationarity test at population level  
  		# cross-correlations across different series
  		return
+	
+	def select_subset(self, row_selection_query, column_selection_query):
+		# TODO: use the selection_query to get a subset of rows and a list of columns
+		return df_subset
