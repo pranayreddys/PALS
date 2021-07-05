@@ -34,6 +34,7 @@ class TimeSeriesDataSpec(BaseModel):
     is_cell_aggregation: bool
     metric_name: LossMetric
     column_weights: Dict[str,float]
+    #TODO: need additional elements for counterfactual evaluation 
     
  class VariableSpec(BaseModel):
    #TODO: just the information needed to sample from tfp.distributions.Distribution
