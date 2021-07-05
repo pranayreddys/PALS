@@ -1,4 +1,5 @@
 from dataset.dataset import TimeSeriesDataset
+from entities.key_entities import TimeSeriesDataSpec
 from models.base_models import BaseTimeSeriesModel
 import enum
 
