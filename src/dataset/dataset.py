@@ -1,51 +1,69 @@
 import pandas as pd
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
-
-class TabularDataset(pd.DataFrame):
-
-	def _init_(self, _dataset_spec:TabularDataSpec):
+from utils.read_write_utils import read_data
+class TabularDataset:
+	def __init__(self, _dataset_spec: TabularDataSpec):
 		#TODO
 		# read the dataset from data source
 		# self.data
 		# set the schema
-		dataset_spec =  _dataset_spec
+		self.dataset_spec =  _dataset_spec
+		self.data = read_data(dataset_spec.data_source, dataset_spec.data_format)
+		self._validate()
 		# validate data with the schema 
 
 	def _validate(self):
-		#TODO
+		#FIXME: If more validation required
+		columns = set(self.data.columns)
+		assert(set(self.dataset_spec.instance_id_columns).issubset(columns))
+		assert(set(self.dataset_spec.dependent_columns).issubset(columns))
+		assert(set(self.dataset_spec.independent_columns).issubset(columns))
+		assert(not (set(self.dataset_spec.dependent_columns) 
+				& set(self.dataset_spec.independent_columns)))
+		
 		return
 
  	def describe(self):
  		return self.data.describe()
 
- 	def detailed_report(self, report_path:str):
+ 	def detailed_report(self, report_path: str):
  		#TODO-SKIP FOR NOW - NOT NEEDED
     		#individual column - availability, distribution 
     		#pairwise correlations
  		return
 	def select_subset(self, row_selection_query, column_selection_query):
 		# TODO: use the selection_query to get a subset of rows and a list of columns
-		return df_subset
+		return self.data.loc[row_selection_query, column_selection_query]
 
-class TimeSeriesDataset(pd.DataFrame):
-
-	def _init_(self, _dataset_spec:TimeSeriesDataSpec):
+class TimeSeriesDataset:
+	def __init__(self, _dataset_spec: TimeSeriesDataSpec):
 		#TODO
 		# read the dataset from data source
 		# self.data 
 		# set the schema
-		dataset_spec =  _dataset_spec
+		self.dataset_spec =  _dataset_spec
+		self.data = read_data(dataset_spec.data_source, dataset_spec.data_format)
+		self._validate()
 		# validate data with the schema 
 
 	def _validate(self):
 		#TODO
+		columns = set(self.data.columns)
+		assert(set(self.dataset_spec.independent_state_columns).issubset(columns))
+		assert(set(self.dataset_spec.control_input_columns).issubset(columns))
+		assert(self.dataset_spec.time_column in columns)
+		assert(self.dataset_spec.series_id_column in columns)
+		assert(self.dataset_spec.series_attribute_columns in columns) # TODO: Is this required? 
+		assert(self.dataset_spec.dependent_state_columns in columns)
+		assert(not (set(self.dataset_spec.dependent_state_columns) 
+				& set(self.dataset_spec.independent_state_columns)))
 		return
 
  	def describe(self):
  		#TODO: Add additional time series information later  
  		return self.data.describe()
 
- 	def detailed_report(self, report_path:str):
+ 	def detailed_report(self, report_path: str):
  		# TODO - LATER --statsmodels - we can use Sharut's code
    		# individual column - availability, distribution
  		# plot original data, rolling mean and variance for day, week of each series x id (e.g., person's BP)
@@ -57,4 +75,4 @@ class TimeSeriesDataset(pd.DataFrame):
 	
 	def select_subset(self, row_selection_query, column_selection_query):
 		# TODO: use the selection_query to get a subset of rows and a list of columns
-		return df_subset
+		return self.data.loc[row_selection_query, column_selection_query]

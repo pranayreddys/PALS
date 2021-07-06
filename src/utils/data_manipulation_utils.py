@@ -1,6 +1,6 @@
 import collections.abc
 
-def flatten(d, parent_key='', sep='_'):
+def flatten(d: collections.abc.MutableMapping, parent_key='', sep='_'):
     """Flatten a nested dictionary
     Args:
         d (collections.abc.MutableMapping): input dictionary

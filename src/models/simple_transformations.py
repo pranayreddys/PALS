@@ -10,5 +10,7 @@ class SimpleTransformationsModel(BaseTransformationModel):
         #TODO: shall we assume _model_config is a list of transformations 
         # to be applied to individual input columns - some classes already exist
         
+    @staticmethod
     def _predict(independent_vals):
+        pass
       #TODO: need to predict the transformation
