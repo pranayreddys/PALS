@@ -21,12 +21,11 @@ class BaseTimeSeriesModel(tf.keras.Model):
         
         controls, states = inputs
         predictions = []
-        for horizon_step in range(self.dataspec.forecast_horizon):
+        for horizon_step in range(self.train_config.lead_gap + self.train_config.forecast_horizon):
             new_state = self._predict_one_step(states, controls)
-            predictions.append(new_state)
+            if horizon_step >= self.train_config.lead_gap:
+                predictions.append(new_state)
             states[:, 0 : states.shape[1]-1, :]=  states[:, 1:, :]
-            # batch x time x features 
-            
             states[:, states.shape[1]-1, :] = new_state
 
         predictions = tf.stack(predictions)
@@ -97,6 +96,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
         #                                             patience=patience,
         #                                             mode='min')
+        self.train_config = train_config
         self.compile(loss=tf.losses.MeanSquaredError(), #TODO: Fix loss function metric
                         optimizer=train_config.get_optimizer(),
                         metrics=[])
@@ -218,8 +218,9 @@ class BaseTransformationModel(tf.keras.Model):
         # output_data is a TabularDataset with output column populated but with "_predicted" suffix
         columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
         output_data = TabularDataset(tb_data.dataset_spec, blank_dataset=True)
+        output = self.predict(self._get_data(columns, tb_data.data))
         for index, target in enumerate(self.dataspec.target_columns):
-            output_data[target+"_predict"] = output_data[:, index]
+            output_data[target+"_predict"] = output[:, index]
         return output_data
 
 
