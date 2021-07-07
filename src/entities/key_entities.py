@@ -8,13 +8,13 @@ class TimeSeriesDataSpec(BaseModel):
     #TODO: Pranay please fix this appropriately as per the AutoML input
     data_source: FilePath
     data_format: str
-    data_granularity_unit: TimeUnit
-    data_granularity_count: int
+    data_granularity_unit: TimeUnit # How are we going to use these? Imputation in the code?
+    data_granularity_count: int # We use this for sampling?
     
     #CHECK: keeping these as lists in case the information is spread across multiple columns
     #Feel free to change time and series_id to a single one
     time_column: str
-    series_id_column: str
+    series_id_columns: List[str]
     series_attribute_columns: List[str]
     control_input_columns: List[str] 
     dependent_state_columns: List[str] 
@@ -32,6 +32,7 @@ class TabularDataSpec(BaseModel):
    instance_id_columns: List[str]
    dependent_columns: List[str] 
    independent_columns: List[str]
+   target_columns: List[str]
    
 class LossFunctionSpec(BaseModel):
    is_column_aggregation: bool
@@ -46,5 +47,3 @@ class VariableSpec(BaseModel):
    distribution_name: Distribution
    distribution_args: Dict[str,str]
   
-
-class 

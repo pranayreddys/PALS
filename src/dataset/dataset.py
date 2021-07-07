@@ -2,14 +2,15 @@ import pandas as pd
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 from utils.read_write_utils import read_data
 class TabularDataset:
-	def __init__(self, _dataset_spec: TabularDataSpec):
+	def __init__(self, _dataset_spec: TabularDataSpec, blank_dataset=False):
 		#TODO
 		# read the dataset from data source
 		# self.data
 		# set the schema
 		self.dataset_spec =  _dataset_spec
-		self.data = read_data(dataset_spec.data_source, dataset_spec.data_format)
-		self._validate()
+		if not blank_dataset:
+			self.data = read_data(dataset_spec.data_source, self.dataset_spec.data_format)
+			self._validate()
 		# validate data with the schema 
 
 	def _validate(self):
@@ -36,14 +37,16 @@ class TabularDataset:
 		return self.data.loc[row_selection_query, column_selection_query]
 
 class TimeSeriesDataset:
-	def __init__(self, _dataset_spec: TimeSeriesDataSpec):
+	def __init__(self, _dataset_spec: TimeSeriesDataSpec, blank_dataset=False):
 		#TODO
 		# read the dataset from data source
 		# self.data 
 		# set the schema
 		self.dataset_spec =  _dataset_spec
-		self.data = read_data(dataset_spec.data_source, dataset_spec.data_format)
-		self._validate()
+		if not blank_dataset:
+			self.data = read_data(dataset_spec.data_source, dataset_spec.data_format)
+			self._validate()
+			self.data.sort_values(self.dataset_spec.time_column, inplace=True)
 		# validate data with the schema 
 
 	def _validate(self):
@@ -76,3 +79,6 @@ class TimeSeriesDataset:
 	def select_subset(self, row_selection_query, column_selection_query):
 		# TODO: use the selection_query to get a subset of rows and a list of columns
 		return self.data.loc[row_selection_query, column_selection_query]
+	
+	def subset_per_id(self):
+		return self.data.groupby(self.dataset_spec.series_id_columns) 

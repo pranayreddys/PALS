@@ -1,11 +1,13 @@
 import tensorflow as tf
 from dataset.dataset import TimeSeriesDataset, TabularDataset
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
+from entities.modeling_configs import TimeSeriesTrainingConfig
 
 
 class BaseTimeSeriesModel(tf.keras.Model):
 #ASSUMPTION: All inputs are given in numeric format
 #ASSUMPTION 2: Output is assumed to be the next state of the time series
+#TODO: Add second dataloader that handles each time series as different points.  
 
     def __init__(self, _dataspec: TimeSeriesDataSpec):
         super(BaseTimeSeriesModel, self).__init__()
@@ -31,26 +33,38 @@ class BaseTimeSeriesModel(tf.keras.Model):
         predictions = tf.transpose(predictions, [1, 0, 2])
         return predictions
 
-    
-    def _split_window(self, controls, states):
-        input_slice= slice(0, self.dataspec.context_window)
-        label_slice= slice(self.dataspec.context_window, None)
+    @staticmethod
+    def _split_window(controls, states, config):
+        input_slice= slice(0, config.context_window)
+        label_slice= slice(config.context_window+config.lead_gap, None)
         return (controls, states[:,input_slice,:]), states[:,label_slice,:]
 
-    def _make_train_dataset(self, controls, states):
+    @staticmethod
+    def _make_subset(controls, states, config):
         #TODO: change the params available here
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
             data=controls,
             targets=states,
-            sequence_length=self.dataspec.context_window
-                            + self.dataspec.forecast_horizon,
-            sequence_stride=1,
-            shuffle=True,
-            batch_size=32,) # returns batch x time x feature
+            sequence_length=config.context_window
+                            + config.lead_gap
+                            + config.forecast_horizon,
+            sequence_stride=config.stride,
+            shuffle=False,
+            batch_size=config.batchsize,) # returns batch x time x feature
 
-        ds = ds.map(self._split_window) # FIXME: Slightly hacky
+        ds = ds.map(lambda x, y: BaseTimeSeriesModel._split_window(x,y, config)) # FIXME: Slightly hacky
         return ds
 
+    def _make_dataset(self, ts_data: TimeSeriesDataset, config):
+        dataset_subsets = []
+        for _, grouped_subset in ts_data.subset_per_id():
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            state_subset = self._get_data(grouped_subset, self.dataspec.independent_state_columns
+                                                + self.dataspec.dependent_state_columns)
+
+            dataset_subsets.append(_make_subset(control_subset, state_subset, config))
+        return tf.data.experimental.choose_from_datasets(dataset_subsets,
+                                        tf.data.Dataset.range(len(dataset_subsets)))
     @staticmethod
     def _get_data(cols, inputs):
         #Extracting relevant columns from inputs
@@ -76,22 +90,18 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # which can be used to fit the model - we can implement the latter one first
         # sets the model params
         # ASSUMPTION: TimeSeriesDataset is the train split.
-        control_data = self._get_data(train_data.data, self.dataspec.control_input_columns)
-        state_data = self._get_data(train_data.data, self.dataspec.independent_state_columns
-                                                + self.dataspec.dependent_state_columns)
+        # control_data = self._get_data(train_data.data, self.dataspec.control_input_columns)
+        # state_data = self._get_data(train_data.data, self.dataspec.independent_state_columns
+        #                                         + self.dataspec.dependent_state_columns)
         
-        
-        early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                    patience=patience,
-                                                    mode='min')
-
-        self.compile(loss=tf.losses.MeanSquaredError(),
-                        optimizer=tf.optimizers.Adam(),
-                        metrics=[tf.metrics.MeanAbsoluteError()])
-
-        history = self.fit(_make_train_dataset(control_data, state_data), 
-                            epochs=train_config.epochs,
-                            callbacks=[early_stopping]
+        # early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
+        #                                             patience=patience,
+        #                                             mode='min')
+        self.compile(loss=tf.losses.MeanSquaredError(), #TODO: Fix loss function metric
+                        optimizer=train_config.get_optimizer(),
+                        metrics=[])
+        history = self.fit(_make_dataset(train_data, train_config), 
+                            epochs=train_config.epochs, shuffle=False
                         )
                             # validation_data=window.val,
         return
@@ -107,14 +117,29 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # we use the model to make predictions at t based on known observations at time (t-l) 
         # (or before) and then evaluate the accuracy
         # loss_values is a list of values corresponding to the loss functions in the config
-        return loss_values
+        for _, grouped_subset in ts_data.subset_per_id():
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
+            state_subset = self._get_data(grouped_subset, state_columns)
+            #TODO: Add params for evaluate
+            self.evaluate(_make_subset(control_subset, state_subset, eval_config))
 
     def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
         # TODO: Same two models here as well. This prediction assumes that the ts_data 
         # actually has the control inputs (if any)  populated for the horizon 
         # need to raise an error if that is not true
         # output_data is a TimeSeriesDataset with the relevant columns having "_predicted" suffix
-        return output_data
+        ret_ts_data = TimeSeriesDataset(ts_data.dataset_spec, blank_dataset=True)
+        ret_ts_data.data = ts_data.data.copy()
+        for _, grouped_subset in ret_ts_data.subset_per_id():
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
+            state_subset = self._get_data(grouped_subset, state_columns)
+            for state in state_columns:
+                grouped_subset[state+"_predict"] = -1
+            #TODO: What is the output of predict? We are predicting many values, many times for each day
+            self.predict(_make_subset(control_subset, state_subset, predict_config))
+        return ret_ts_data
 
 
     def simple_impute(self, ts_data: TimeSeriesDataset, impute_config: TimeSeriesImputationConfig):
@@ -146,9 +171,10 @@ class BaseTransformationModel(tf.keras.Model):
         
 
     def call(self, inputs):
-        dependent_vals = _get_data(self.dataspec.dependent_columns, inputs)
-        independent_vals = _get_data(self.dataspec.independent_columns, inputs)
-        output = _predict(dependent_vals,independent_vals)
+        # dependent_vals = _get_data(self.dataspec.dependent_columns, inputs)
+        # independent_vals = _get_data(self.dataspec.independent_columns, inputs)
+        output = _predict(inputs[:, :len(self.dataspec.dependent_columns)],
+                         inputs[:, len(self.dataspec.dependent_columns):])
         return output
 
     @staticmethod
@@ -166,19 +192,34 @@ class BaseTransformationModel(tf.keras.Model):
 
         raise NotImplementedError
 
-    def simple_fit(self, ts_data: TabularDataset, train_config: TabularTrainingConfig):
+    def simple_fit(self, tb_data: TabularDataset, train_config: TabularTrainingConfig):
         # TODO: This fit is primarily a wrapper around the keras model compile and fit
         # need to massage the dataset and config into appropriate form
+        self.compile(loss=tf.losses.MeanSquaredError(), #TODO: Fix loss function metric
+                        optimizer=train_config.get_optimizer(),
+                        metrics=[])
+        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+        history = self.fit(x=self._get_data(columns, tb_data.data), 
+                            y =self._get_data(self.dataspec.target_columns, tb_data.data), 
+                            epochs=train_config.epochs, 
+                            shuffle=True
+                        )
         return
 
 
-    def simple_evaluate(self, ts_data: TabularDataset, eval_config: TabularEvaluationConfig):
-        # TODO: This evaluate is also a wrapper around the keras model functions
-        return loss_values
+    def simple_evaluate(self, tb_data: TabularDataset, eval_config: TabularEvaluationConfig):
+        # TODO: Parse tabularevaluationconfig and pass arguments to evaluate.
+        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+        return self.evaluate(x=self._get_data(columns, tb_data.data),
+                            y=self._get_data(self.dataspec.target_columns, tb_data.data))
 
-    def simple_predict(self, ts_data: TabularDataset, predict_config: TabularPredictionConfig):
+    def simple_predict(self, tb_data: TabularDataset, predict_config: TabularPredictionConfig):
         # TODO: simple wrapper around predict
         # output_data is a TabularDataset with output column populated but with "_predicted" suffix
+        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+        output_data = TabularDataset(tb_data.dataset_spec, blank_dataset=True)
+        for index, target in enumerate(self.dataspec.target_columns):
+            output_data[target+"_predict"] = output_data[:, index]
         return output_data
 
 
