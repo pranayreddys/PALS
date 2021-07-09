@@ -82,3 +82,6 @@ class TimeSeriesDataset:
 	
 	def subset_per_id(self):
 		return self.data.groupby(self.dataset_spec.series_id_columns) 
+	
+	def assign_id(self, id, cols, values):
+		self.data.loc[self.data[self.dataset_spec.series_id_columns]==id, cols] = values

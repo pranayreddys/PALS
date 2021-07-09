@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 from dataset.dataset import TimeSeriesDataset, TabularDataset
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 from entities.modeling_configs import TimeSeriesTrainingConfig
@@ -14,22 +15,22 @@ class BaseTimeSeriesModel(tf.keras.Model):
         self.dataspec = _dataspec
 
     def call(self, inputs):
-        # state_vals = _get_data(self.dataspec.dependent_state_columns 
-        #                         + self.dataspec.independent_state_columns, inputs)
-        # control_input_vals = _get_data(self.dataspec.control_input_columns, inputs)
-        # output = _predict_one_step(state_vals,control_input_vals)
-        
         controls, states = inputs
         predictions = []
-        for horizon_step in range(self.train_config.lead_gap + self.train_config.forecast_horizon):
-            new_state = self._predict_one_step(states, controls)
-            if horizon_step >= self.train_config.lead_gap:
+        for horizon_step in range(self.config.lead_gap + self.config.forecast_horizon):
+            new_state = self._predict_one_step(states, 
+                                controls[horizon_step: self.config.context_window+1+horizon_step])
+            if horizon_step >= self.config.lead_gap:
                 predictions.append(new_state)
             states[:, 0 : states.shape[1]-1, :]=  states[:, 1:, :]
             states[:, states.shape[1]-1, :] = new_state
 
         predictions = tf.stack(predictions)
+        # T x B x S
+
         predictions = tf.transpose(predictions, [1, 0, 2])
+        # B x T x S
+
         return predictions
 
     @staticmethod
@@ -40,7 +41,8 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
     @staticmethod
     def _make_subset(controls, states, config):
-        #TODO: change the params available here
+        assert(config.forecast_horizon>=1)
+        assert(config.context_window>=1)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
             data=controls,
             targets=states,
@@ -96,14 +98,11 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
         #                                             patience=patience,
         #                                             mode='min')
-        self.train_config = train_config
-        self.compile(loss=tf.losses.MeanSquaredError(), #TODO: Fix loss function metric
-                        optimizer=train_config.get_optimizer(),
-                        metrics=[])
+        self.config = train_config
+        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer())
         history = self.fit(_make_dataset(train_data, train_config), 
                             epochs=train_config.epochs, shuffle=False
                         )
-                            # validation_data=window.val,
         return
 
 
@@ -117,6 +116,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # we use the model to make predictions at t based on known observations at time (t-l) 
         # (or before) and then evaluate the accuracy
         # loss_values is a list of values corresponding to the loss functions in the config
+        self.config= eval_config
         for _, grouped_subset in ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
@@ -129,16 +129,26 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # actually has the control inputs (if any)  populated for the horizon 
         # need to raise an error if that is not true
         # output_data is a TimeSeriesDataset with the relevant columns having "_predicted" suffix
+        self.config = predict_config
         ret_ts_data = TimeSeriesDataset(ts_data.dataset_spec, blank_dataset=True)
         ret_ts_data.data = ts_data.data.copy()
-        for _, grouped_subset in ret_ts_data.subset_per_id():
-            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
-            state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
-            state_subset = self._get_data(grouped_subset, state_columns)
+        state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
+        predicted_columns = []
+        total_window_size= self.config.context_window + self.config.lead_gap + self.config.forecast_horizon
+        for horizon_step in range(self.forecast_horizon):
             for state in state_columns:
-                grouped_subset[state+"_predict"] = -1
-            #TODO: What is the output of predict? We are predicting many values, many times for each day
-            self.predict(_make_subset(control_subset, state_subset, predict_config))
+                predict_column_name = state+"_horizon_"+str(horizon_step)+"_predict"
+                predicted_columns.append(predict_column_name)
+                grouped_subset[predict_column_name] = -1
+        for key, grouped_subset in ret_ts_data.subset_per_id():
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            state_subset = self._get_data(grouped_subset, state_columns)
+            predictions = self.predict(_make_subset(control_subset, state_subset, predict_config)) # B x T x S
+            predictions = predictions.reshape(predictions.shape[0], -1) # B x T x S -> B x (T*S)
+            assert(predictions.shape[0]==(grouped_subset.shape[0]-total_window_size+1))
+            predictions_corrected_shape = np.full((grouped_subset.shape[0],predictions.shape[1]),-1)
+            predictions_corrected_shape[:predictions.shape[0], :] = predictions
+            ret_ts_data.assign_id(key, predicted_columns, predictions_corrected_shape)
         return ret_ts_data
 
 
@@ -160,7 +170,8 @@ class BaseControlSystemModel(BaseTimeSeriesModel):
     
     def simple_control(self, ts_data: TimeSeriesDataset, control_config: TimeSeriesControlConfig):
         # TODO: LATER after other parts are done
-        return control_vals
+        pass
+        #return control_vals
 
 
 class BaseTransformationModel(tf.keras.Model):
@@ -193,9 +204,7 @@ class BaseTransformationModel(tf.keras.Model):
         raise NotImplementedError
 
     def simple_fit(self, tb_data: TabularDataset, train_config: TabularTrainingConfig):
-        # TODO: This fit is primarily a wrapper around the keras model compile and fit
-        # need to massage the dataset and config into appropriate form
-        self.compile(loss=tf.losses.MeanSquaredError(), #TODO: Fix loss function metric
+        self.compile(loss=train_config.get_loss(),
                         optimizer=train_config.get_optimizer(),
                         metrics=[])
         columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
@@ -214,8 +223,6 @@ class BaseTransformationModel(tf.keras.Model):
                             y=self._get_data(self.dataspec.target_columns, tb_data.data))
 
     def simple_predict(self, tb_data: TabularDataset, predict_config: TabularPredictionConfig):
-        # TODO: simple wrapper around predict
-        # output_data is a TabularDataset with output column populated but with "_predicted" suffix
         columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
         output_data = TabularDataset(tb_data.dataset_spec, blank_dataset=True)
         output = self.predict(self._get_data(columns, tb_data.data))
