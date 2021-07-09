@@ -1,0 +1,31 @@
+{
+    "setup":{
+        "project_id": "pals-backend-dev",
+        "staging_bucket_name":"gs://pranay_trial"
+    },
+    "ds":{
+        "exists": true,
+        "source": "projects/242781379053/locations/us-central1/datasets/8236001799018905600"
+    },
+    "training_job":{
+        "display_name": "notebookautojob",
+        "time_column": "date",
+        "target_column": "sale_dollars",
+        "time_series_identifier_column": "store_name",
+        "available_at_forecast_columns": ["date"],
+        "unavailable_at_forecast_columns": ["sale_dollars"],
+        "data_granularity_unit": "day",
+        "forecast_horizon": 30,
+        "context_window": 30,
+        "time_series_attribute_columns": ["city", "zip_code", "county"],
+        "optimization_objective": "minimize-rmse",
+        "column_transformations": [
+                {"timestamp": {"column_name": "date"}},
+                {"numeric": {"column_name": "sale_dollars"}},
+                {"categorical": {"column_name": "city"}},
+                {"categorical": {"column_name": "zip_code"}},
+                {"categorical": {"column_name": "county"}}
+            ],
+        "model_display_name": "iowa-liquor-sales-forecast-model2"
+    }
+}

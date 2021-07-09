@@ -1,0 +1,16 @@
+{
+    "setup":{
+        "project_id": "pals-backend-dev",
+        "staging_bucket_name":"gs://pranay_trial"
+    },
+    "prediction_job":{
+        "job_display_name": "prediction_api",
+        "model_name": "1296060326357237760",
+        "instances_format": "bigquery",
+        "predictions_format": "csv",
+        "source": "bq://bigquery-public-data.iowa_liquor_sales_forecasting.2021_sales_predict",
+        "destination_prefix":"gs://pranay_trial2" ,
+        "is_gcs_source": false,
+        "is_gcs_dest": true
+    }
+}
