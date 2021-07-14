@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from entities.key_entities import LossFunctionSpec
-import keras.metrics as km
+import tensorflow.keras.metrics as km
 
 
 def evaluate(ground_truth: pd.DataFrame, predictions: pd.DataFrame, loss_functions: List[LossFunctionSpec],
@@ -11,6 +11,7 @@ def evaluate(ground_truth: pd.DataFrame, predictions: pd.DataFrame, loss_functio
 	#loop over loss functions 
 	#check if computation is column wise or cell wise; 
   	#compute accordingly and aggregate
-	return loss_values
+	pass
+	# return loss_values
 
 #TODO: offline counterfactual evaluation utilities later

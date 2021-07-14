@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from dataset.dataset import TimeSeriesDataset, TabularDataset
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
-from entities.modeling_configs import TimeSeriesTrainingConfig
+from entities.modeling_configs import *
 
 
 class BaseTimeSeriesModel(tf.keras.Model):
@@ -12,18 +12,23 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
     def __init__(self, _dataspec: TimeSeriesDataSpec):
         super(BaseTimeSeriesModel, self).__init__()
-        self.dataspec = _dataspec
+        self.dataspec = _dataspec.copy(deep=True)
 
     def call(self, inputs):
         controls, states = inputs
+        controls = tf.convert_to_tensor(controls)
+        states = tf.convert_to_tensor(states)
         predictions = []
         for horizon_step in range(self.config.lead_gap + self.config.forecast_horizon):
             new_state = self._predict_one_step(states, 
                                 controls[horizon_step: self.config.context_window+1+horizon_step])
             if horizon_step >= self.config.lead_gap:
                 predictions.append(new_state)
-            states[:, 0 : states.shape[1]-1, :]=  states[:, 1:, :]
-            states[:, states.shape[1]-1, :] = new_state
+            # states[:, 0 : states.shape[1]-1]=  states[:, 1:]
+            # states[:, states.shape[1]-1] = new_state
+            states = tf.concat((states[:, 1:], tf.reshape(new_state,[new_state.shape[0], 1,-1])), axis=1)
+            # Input 1 to the function has shape B x T-1 x S
+            # Input 2 has shape B x S, so needs to be reshaped to B x 1 x S and stacked
 
         predictions = tf.stack(predictions)
         # T x B x S
@@ -33,27 +38,32 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
         return predictions
 
-    @staticmethod
-    def _split_window(controls, states, config):
-        input_slice= slice(0, config.context_window)
-        label_slice= slice(config.context_window+config.lead_gap, None)
-        return (controls, states[:,input_slice,:]), states[:,label_slice,:]
+    def _split_window(self, timeseries, config):
+        dim_controls = len(self.dataspec.control_input_columns) if self.dataspec.control_input_columns else 1
+        controls = timeseries[:, :, 0:dim_controls]
+        states = timeseries[:,:,dim_controls:]
+        return (controls, states[:,0:config.context_window]), \
+                states[:,(config.context_window+config.lead_gap):config.context_window+config.lead_gap+config.forecast_horizon]
 
-    @staticmethod
-    def _make_subset(controls, states, config):
+    def _make_subset(self,timeseries, config):
         assert(config.forecast_horizon>=1)
         assert(config.context_window>=1)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
-            data=controls,
-            targets=states,
+            data=timeseries,
+            targets=None,
             sequence_length=config.context_window
                             + config.lead_gap
                             + config.forecast_horizon,
             sequence_stride=config.stride,
             shuffle=False,
-            batch_size=config.batchsize,) # returns batch x time x feature
+            batch_size=config.batchsize) # returns batch x time x feature
 
-        ds = ds.map(lambda x, y: BaseTimeSeriesModel._split_window(x,y, config)) # FIXME: Slightly hacky
+        # for batch in ds:
+        #     inputs, targets = batch
+        #     print(inputs.shape)
+        #     print(targets.shape)
+        # ds = ds.map(lambda x, y: print(x.shape, y.shape))
+        ds = ds.map(lambda x: self._split_window(x, config)) 
         return ds
 
     def _make_dataset(self, ts_data: TimeSeriesDataset, config):
@@ -63,14 +73,17 @@ class BaseTimeSeriesModel(tf.keras.Model):
             state_subset = self._get_data(grouped_subset, self.dataspec.independent_state_columns
                                                 + self.dataspec.dependent_state_columns)
 
-            dataset_subsets.append(_make_subset(control_subset, state_subset, config))
+            dataset_subsets.append(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), config))
         return tf.data.experimental.choose_from_datasets(dataset_subsets,
                                         tf.data.Dataset.range(len(dataset_subsets)))
+        # return dataset_subsets[0]
     @staticmethod
-    def _get_data(cols, inputs):
+    def _get_data(inputs, cols):
         #Extracting relevant columns from inputs
         #Returns numpy array 
-        return inputs[cols].values
+        if not cols:
+            return np.array(list(range(len(inputs)))).reshape(-1,1)
+        return inputs[cols].values.reshape(len(inputs),-1)
 
     def _predict_one_step(self, state_vals, control_input_vals):
         # This is the main function to be implemented by the derived classes
@@ -83,7 +96,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         raise NotImplementedError
 
     def simple_fit(self, train_data: TimeSeriesDataset, 
-                        val_data: TimeSeriesDataSet,
+                        val_data: TimeSeriesDataset,
                         train_config: TimeSeriesTrainingConfig):
         # TODO: This fit is primarily a wrapper around the keras model compile and fit
         # need to massage the dataset and config into appropriate form
@@ -99,8 +112,8 @@ class BaseTimeSeriesModel(tf.keras.Model):
         #                                             patience=patience,
         #                                             mode='min')
         self.config = train_config
-        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer())
-        history = self.fit(_make_dataset(train_data, train_config), 
+        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), run_eagerly=True)
+        history = self.fit(self._make_dataset(train_data, train_config), 
                             epochs=train_config.epochs, shuffle=False
                         )
         return
@@ -122,7 +135,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
             state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
             state_subset = self._get_data(grouped_subset, state_columns)
             #TODO: Add params for evaluate
-            self.evaluate(_make_subset(control_subset, state_subset, eval_config))
+            self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config))
 
     def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
         # TODO: Same two models here as well. This prediction assumes that the ts_data 
@@ -143,7 +156,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         for key, grouped_subset in ret_ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_subset = self._get_data(grouped_subset, state_columns)
-            predictions = self.predict(_make_subset(control_subset, state_subset, predict_config)) # B x T x S
+            predictions = self.predict(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), predict_config)) # B x T x S
             predictions = predictions.reshape(predictions.shape[0], -1) # B x T x S -> B x (T*S)
             assert(predictions.shape[0]==(grouped_subset.shape[0]-total_window_size+1))
             predictions_corrected_shape = np.full((grouped_subset.shape[0],predictions.shape[1]),-1)
@@ -162,6 +175,9 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # We might prefer to use bidirectional models here as well
         return
     
+    def set_params(self, params):
+        ## Needs to be overloaded
+        pass
     
 class BaseControlSystemModel(BaseTimeSeriesModel):
 
@@ -189,7 +205,7 @@ class BaseTransformationModel(tf.keras.Model):
         return output
 
     @staticmethod
-    def _get_data(cols, inputs):
+    def _get_data(inputs, cols):
         #Returning numpy arrays
         return inputs[cols].values
 
@@ -208,8 +224,8 @@ class BaseTransformationModel(tf.keras.Model):
                         optimizer=train_config.get_optimizer(),
                         metrics=[])
         columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
-        history = self.fit(x=self._get_data(columns, tb_data.data), 
-                            y =self._get_data(self.dataspec.target_columns, tb_data.data), 
+        history = self.fit(x=self._get_data(tb_data.data, columns), 
+                            y =self._get_data(tb_data.data, self.dataspec.target_columns), 
                             epochs=train_config.epochs, 
                             shuffle=True
                         )

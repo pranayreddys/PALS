@@ -1,0 +1,35 @@
+{
+    "dataset_spec":{
+        "data_source": "data/states.csv",
+        "data_format": "csv",
+        "time_column": "Date",
+        "series_id_columns": ["State"],
+        "series_attribute_columns": [],
+        "control_input_columns": [],
+        "dependent_state_columns": [],
+        "independent_state_columns": ["Confirmed", "Recovered", "Deceased", "Other"],
+        "column_transformations": {
+            "Date": "DateTime",
+            "Confirmed": "StandardScaler",
+            "Recovered": "StandardScaler",
+            "Deceased": "StandardScaler",
+            "Other": "StandardScaler"
+        }
+    },
+    "split_percentages": [0.6, 0.2, 0.2],
+    "training_config":{
+        "model_class": "SimpleLinear",
+        "model_parameters": {},
+        "context_window": 20,
+        "lead_gap":2,
+        "forecast_horizon": 3,
+        "optimizer": {
+            "optimizer_type": "Adam"
+        },
+        "train_loss_function":{
+            "loss_type": "MeanSquaredError"
+        },
+        "epochs": 5,
+        "batchsize": 128 
+    }   
+}
