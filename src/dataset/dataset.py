@@ -2,6 +2,9 @@ import pandas as pd
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 from utils.read_write_utils import read_data
 from sklearn.model_selection import train_test_split
+from itertools import chain
+from entities.all_enums import ExperimentMode
+from typing import List
 class TabularDataset:
     def __init__(self, _dataset_spec: TabularDataSpec, blank_dataset=False):
         #TODO
@@ -48,7 +51,7 @@ class TimeSeriesDataset:
         if not blank_dataset:
             self.data = read_data(_dataset_spec.data_source, _dataset_spec.data_format)
             self._validate()
-            self.data.sort_values(self.dataset_spec.time_column, inplace=True)
+            self._sort_values()
         # validate data with the schema 
 
     def _check_existence(self, col_list):
@@ -60,13 +63,16 @@ class TimeSeriesDataset:
         columns = set(self.data.columns)
         self._check_existence(self.dataset_spec.independent_state_columns)
         self._check_existence(self.dataset_spec.control_input_columns)
-        self._check_existence(self.dataset_spec.series_id_columns)
+        self._check_existence([self.dataset_spec.series_id_column])
         assert(self.dataset_spec.time_column in columns)
         self._check_existence(self.dataset_spec.series_attribute_columns)
         self._check_existence(self.dataset_spec.dependent_state_columns)
         assert(not (set(self.dataset_spec.dependent_state_columns) 
                 & set(self.dataset_spec.independent_state_columns)))
         return
+
+    def _sort_values(self):
+        self.data.sort_values(self.dataset_spec.time_column, inplace=True)
 
     def describe(self):
          #TODO: Add additional time series information later  
@@ -87,27 +93,42 @@ class TimeSeriesDataset:
         return self.data.loc[row_selection_query, column_selection_query]
     
     def subset_per_id(self):
-        return self.data.groupby(self.dataset_spec.series_id_columns) 
+        return self.data.groupby(self.dataset_spec.series_id_column) 
     
     def assign_id_vals(self, id, cols, values):
-        self.data.loc[self.data[self.dataset_spec.series_id_columns]==id, cols] = values
+        self.data.loc[(self.data[self.dataset_spec.series_id_column]==id).values, cols] = values
     
     def _id_selection(self, ids):
-        keys = list(ids)
-        i1 = self.data.set_index(keys).index
-        i2  = ids.set_index(keys).index
-        return self.data[i1.isin(i2)]
+        keys= ids.values.tolist()
+        return pd.concat([self.data.loc[(self.data[self.dataset_spec.series_id_column] == key).values] for key in keys],
+            ignore_index=True)
+        
 
-    def train_val_test_split(self, split_percentages):
-        X= self.data[self.dataset_spec.series_id_columns].drop_duplicates()
-        X_train, X_test= train_test_split(X, test_size=split_percentages[2], random_state=1)
-        X_train, X_val = train_test_split(X_train, 
-                test_size=split_percentages[1]/(split_percentages[0]+split_percentages[1]), random_state=1)
+    def train_val_test_split(self, split_percentages: List[float], 
+                        experiment_mode: ExperimentMode,
+                        trainingconfig = None):
         train_dataset = TimeSeriesDataset(self.dataset_spec, blank_dataset=True)
-        train_dataset.data = self._id_selection(X_train)        
         val_dataset= TimeSeriesDataset(self.dataset_spec, blank_dataset=True)
-        val_dataset.data = self._id_selection(X_val)
         test_dataset = TimeSeriesDataset(self.dataset_spec, blank_dataset=True)
-        test_dataset.data = self._id_selection(X_test)
-        return train_dataset, val_dataset, test_dataset
+        
+        if experiment_mode==ExperimentMode.MultiTimeSeries:
+            X= self.data[self.dataset_spec.series_id_column].drop_duplicates()
+            X_train, X_test= train_test_split(X, test_size=split_percentages[2], random_state=1)
+            X_train, X_val = train_test_split(X_train, 
+                    test_size=split_percentages[1]/(split_percentages[0]+split_percentages[1]), random_state=1)
+            train_dataset.data = self._id_selection(X_train)  
+            train_dataset._sort_values()     
+            val_dataset.data = self._id_selection(X_val)
+            val_dataset._sort_values()
+            test_dataset.data = self._id_selection(X_test)
+            test_dataset._sort_values()
+            return train_dataset, val_dataset, test_dataset
+        else:
+            #TODO: Complete this training mode
+            size = len(self.data)
+            train_split_end = int(size*split_percentages[0])
+            val_split_start = train_split_end-trainingconfig.context_window-trainingconfig.lead_gap
+            assert(val_split_start>0)          
+            val_split_end = int(size*split_percentages[1])
+            test_split_start = val_split_end-trainingconfig.context_window-trainingconfig.lead_gap
 

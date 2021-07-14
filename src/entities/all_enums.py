@@ -55,3 +55,6 @@ class ColumnTransform(str, enum.Enum):
 	DateTime = 'DateTime'
 	Identity = 'Identity'
 
+class ExperimentMode(str, enum.Enum):
+	SimpleForecast = 'SimpleForecast'
+	MultiTimeSeries = 'MultiTimeSeries'

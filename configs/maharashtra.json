@@ -1,6 +1,10 @@
 {
+    "presplit": true,
+    "train_path":"data/maharashtra_train.csv" ,
+    "val_path": "data/maharashtra_train.csv",
+    "test_path": "data/maharashtra_test.csv",
     "dataset_spec":{
-        "data_source": "data/states.csv",
+        "data_source": "data/maharashtra_train.csv",
         "data_format": "csv",
         "time_column": "Date",
         "series_id_column": "State",
@@ -16,7 +20,6 @@
             "Other": "StandardScaler"
         }
     },
-    "split_percentages": [0.6, 0.2, 0.2],
     "training_config":{
         "model_class": "SimpleLinear",
         "model_parameters": {},
@@ -29,7 +32,7 @@
         "train_loss_function":{
             "loss_type": "MeanSquaredError"
         },
-        "epochs": 1,
+        "epochs": 100,
         "batchsize": 128 
     },
     "test_output": "data/output.csv" 

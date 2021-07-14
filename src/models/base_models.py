@@ -35,7 +35,6 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
         predictions = tf.transpose(predictions, [1, 0, 2])
         # B x T x S
-        print(predictions.shape)
 
         return predictions
 
@@ -59,11 +58,6 @@ class BaseTimeSeriesModel(tf.keras.Model):
             shuffle=False,
             batch_size=config.batchsize) # returns batch x time x feature
 
-        # for batch in ds:
-        #     inputs, targets = batch
-        #     print(inputs.shape)
-        #     print(targets.shape)
-        # ds = ds.map(lambda x, y: print(x.shape, y.shape))
         ds = ds.map(lambda x: self._split_window(x, config)) 
         return ds
 
@@ -149,20 +143,20 @@ class BaseTimeSeriesModel(tf.keras.Model):
         state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
         predicted_columns = []
         total_window_size= self.config.context_window + self.config.lead_gap + self.config.forecast_horizon
-        for horizon_step in range(self.forecast_horizon):
+        for horizon_step in range(self.config.forecast_horizon):
             for state in state_columns:
-                predict_column_name = state+"_horizon_"+str(horizon_step)+"_predict"
+                predict_column_name = state+"_horizon_"+str(horizon_step+1)+"_predict"
                 predicted_columns.append(predict_column_name)
-                grouped_subset[predict_column_name] = -1
+                ret_ts_data.data[predict_column_name] = np.NaN
         for key, grouped_subset in ret_ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_subset = self._get_data(grouped_subset, state_columns)
             predictions = self.predict(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), predict_config)) # B x T x S
             predictions = predictions.reshape(predictions.shape[0], -1) # B x T x S -> B x (T*S)
             assert(predictions.shape[0]==(grouped_subset.shape[0]-total_window_size+1))
-            predictions_corrected_shape = np.full((grouped_subset.shape[0],predictions.shape[1]),-1)
+            predictions_corrected_shape = np.full((grouped_subset.shape[0],predictions.shape[1]),np.NaN)
             predictions_corrected_shape[:predictions.shape[0], :] = predictions
-            ret_ts_data.assign_id(key, predicted_columns, predictions_corrected_shape)
+            ret_ts_data.assign_id_vals(key, predicted_columns, predictions_corrected_shape)
         return ret_ts_data
 
 

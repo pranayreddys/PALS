@@ -14,5 +14,5 @@ class SimpleLinear(BaseTimeSeriesModel):
         # B x T x S
         state_vals = tf.reshape(state_vals,[state_vals.shape[0], -1])
         # control_input_vals.view((control_input_vals.shape[0], -1))
-        return self.linear(state_vals)
-
+        out = self.linear(state_vals)
+        return out

@@ -5,6 +5,7 @@ from entities.all_enums import TimeUnit, LossMetric, DistributionType, ColumnTra
 class TimeSeriesDataSpec(BaseModel):
     
       #TODO: Pranay please fix this appropriately as per the AutoML input
+      # Support only for a single key
    data_source: str
    data_format: str
    data_granularity_unit: TimeUnit = TimeUnit.Day # How are we going to use these? Imputation in the code?
@@ -13,7 +14,7 @@ class TimeSeriesDataSpec(BaseModel):
    #CHECK: keeping these as lists in case the information is spread across multiple columns
    #Feel free to change time and series_id to a single one
    time_column: str
-   series_id_columns: List[str]
+   series_id_column: str
    series_attribute_columns: List[str]
    control_input_columns: List[str] 
    dependent_state_columns: List[str] 
