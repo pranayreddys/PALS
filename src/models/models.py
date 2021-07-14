@@ -1,10 +1,14 @@
 from models.base_models import BaseTimeSeriesModel
+from entities.modeling_configs import TimeSeriesTrainingConfig
 from entities.key_entities import TimeSeriesDataSpec
 from tensorflow.keras import layers
 import tensorflow as tf
 import numpy as np
 
-class SimpleLinear(BaseTimeSeriesModel):    
+def get_model(ts_config: TimeSeriesTrainingConfig):
+    return eval(ts_config.model_class)
+
+class SimpleVAR(BaseTimeSeriesModel):    
     def __init__(self, _dataspec: TimeSeriesDataSpec):
         super().__init__(_dataspec)
         self.linear = layers.Dense(len(_dataspec.independent_state_columns)+len(_dataspec.dependent_state_columns))

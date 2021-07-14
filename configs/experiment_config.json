@@ -1,10 +1,12 @@
 {
     "presplit": true,
-    "train_path":"data/maharashtra_train.csv" ,
-    "val_path": "data/maharashtra_train.csv",
-    "test_path": "data/maharashtra_test.csv",
+    "train_path":"data/train.csv" ,
+    "val_path": "data/train.csv",
+    "test_path": "data/test.csv",
+    "training_stats": "data/training_stats.txt",
+    "evaluation_stats": "data/evaluation_stats.txt",
     "dataset_spec":{
-        "data_source": "data/maharashtra_train.csv",
+        "data_source": "data/train.csv",
         "data_format": "csv",
         "time_column": "Date",
         "series_id_column": "State",
@@ -21,11 +23,12 @@
         }
     },
     "training_config":{
-        "model_class": "SimpleLinear",
+        "model_class": "SimpleVAR",
         "model_parameters": {},
         "context_window": 20,
         "lead_gap":2,
         "forecast_horizon": 3,
+        "metrics": ["MeanAbsoluteError", "MeanSquaredLogarithmicError"],
         "optimizer": {
             "optimizer_type": "Adam"
         },
@@ -33,7 +36,7 @@
             "loss_type": "MeanSquaredError"
         },
         "epochs": 100,
-        "batchsize": 128 
+        "batchsize": 256
     },
     "test_output": "data/output.csv" 
 }

@@ -7,8 +7,11 @@ from entities.modeling_configs import TimeSeriesTrainingConfig, \
 from dataset.dataset import TimeSeriesDataset, TabularDataset
 from utils.read_write_utils import is_file
 from models.simple_transformations import SimplePreprocessModel
-from models.models import SimpleLinear
+from models.models import SimpleVAR
 from entities.all_enums import ExperimentMode
+from models.models import get_model
+import tabulate
+from utils.eda import visualize
 
 class Runner(BaseModel):
     training: bool = True
@@ -24,6 +27,8 @@ class Runner(BaseModel):
     eval_config: Optional[TimeSeriesEvaluationConfig] = None
     predict_config: Optional[TimeSeriesPredictionConfig] = None
     model_checkpoint: Optional[str]
+    training_stats: Optional[str]=None
+    evaluation_stats: Optional[str]=None
 
     #TODO: write validators to check existence of files above
     #TODO: write validators to ensure contradictory inputs not provided.
@@ -46,6 +51,7 @@ class Runner(BaseModel):
         #group by id and assign different IDs for train,eval and test.
         self._validate()
         if self.training:
+            ## Splitting into train-val-test
             if not self.presplit:
                 full_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
                 train_dataset, val_dataset, test_dataset= \
@@ -58,16 +64,25 @@ class Runner(BaseModel):
                 self.dataset_spec.data_source = self.test_path
                 test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
             
+            #Preprocess the data: TODO Move to one big model
             preprocessor = SimplePreprocessModel(self.dataset_spec.column_transformations)
             preprocessor.simple_fit(train_dataset)
             train_dataset  = preprocessor.simple_predict(train_dataset)
             val_dataset = preprocessor.simple_predict(val_dataset)
             test_dataset = preprocessor.simple_predict(test_dataset)
-            model = eval(self.training_config.model_class)(train_dataset.dataset_spec)
+            ###
+
+            model = get_model(self.training_config)(train_dataset.dataset_spec)
             model.set_params(self.training_config.model_parameters)
-            model.simple_fit(train_dataset, val_dataset, self.training_config)
+            #TODO: Model checkpoints, fit only when required
+            history = model.simple_fit(train_dataset, val_dataset, self.training_config)
+            with open(self.training_stats, 'w') as f:
+                f.write(tabulate.tabulate(history.history, headers=history.history.keys()))
             prediction = model.simple_predict(test_dataset, self.predict_config)
             prediction.data.to_csv(self.test_output)
+            eval_results = model.simple_evaluate(val_dataset, self.predict_config)
+            with open(self.evaluation_stats, 'w') as f:
+                f.write(tabulate.tabulate(eval_results, headers=history.history.keys()))
 
         else:
             pass

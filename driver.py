@@ -16,4 +16,3 @@ if __name__ == "__main__":
 	r = parse_file_as(Runner, args.config_path)
 	r.run()
 	
-r

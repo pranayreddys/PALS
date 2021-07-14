@@ -38,7 +38,7 @@ class TimeUnit(str, enum.Enum):
 
 @enum.unique
 class ModelClass(str, enum.Enum):
-	SimpleLinear = "SimpleLinear"
+	SimpleVAR = "SimpleVAR"
 	pass
 
 @enum.unique

@@ -69,13 +69,12 @@ class BaseTimeSeriesModel(tf.keras.Model):
                                                 + self.dataspec.dependent_state_columns)
 
             dataset_subsets.append(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), config))
-        return tf.data.experimental.choose_from_datasets(dataset_subsets,
-                                        tf.data.Dataset.range(len(dataset_subsets)))
-        # return dataset_subsets[0]
+        
+        return dataset_subsets[0] #FIXME
+        # return tf.data.experimental.choose_from_datasets(dataset_subsets,
+        #                                 tf.data.Dataset.range(len(dataset_subsets)))
     @staticmethod
     def _get_data(inputs, cols):
-        #Extracting relevant columns from inputs
-        #Returns numpy array 
         if not cols:
             return np.array(list(range(len(inputs)))).reshape(-1,1)
         return inputs[cols].values.reshape(len(inputs),-1)
@@ -107,11 +106,13 @@ class BaseTimeSeriesModel(tf.keras.Model):
         #                                             patience=patience,
         #                                             mode='min')
         self.config = train_config
-        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), run_eagerly=True)
-        history = self.fit(self._make_dataset(train_data, train_config), 
+        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), 
+                    metrics=train_config.get_metrics(),run_eagerly=True)
+        dataset = self._make_dataset(train_data, train_config)
+        history = self.fit(dataset,  verbose=1,
                             epochs=train_config.epochs, shuffle=False
                         )
-        return
+        return history
 
 
     def simple_evaluate(self, ts_data: TimeSeriesDataset, eval_config: TimeSeriesEvaluationConfig):
@@ -125,12 +126,14 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # (or before) and then evaluate the accuracy
         # loss_values is a list of values corresponding to the loss functions in the config
         self.config= eval_config
+        per_series= []
         for _, grouped_subset in ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
             state_subset = self._get_data(grouped_subset, state_columns)
-            #TODO: Add params for evaluate
-            self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config))
+            per_series.append(self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config)))
+        
+        return per_series
 
     def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
         # TODO: Same two models here as well. This prediction assumes that the ts_data 

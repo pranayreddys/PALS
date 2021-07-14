@@ -10,7 +10,7 @@ import tensorflow_probability as tfp
 
 class TimeSeriesBaseConfig(BaseModel):
     # data_spec: TimeSeriesDataSpec Dataspec kept separate from baseconf
-    model_class: ModelClass # TODO: need to create this
+    model_class: ModelClass
     model_parameters: Dict
     context_window: int 
     lead_gap: int 
@@ -62,7 +62,7 @@ class TimeSeriesTrainingConfig(TimeSeriesBaseConfig):
     optimizer: Optimizer
     train_loss_function: Loss
     epochs: int
-    callbacks: List[str] = None #TODO
+    metrics: List[LossMetric] = None #TODO
     batchsize: int
 
     def get_optimizer(self):
@@ -70,9 +70,15 @@ class TimeSeriesTrainingConfig(TimeSeriesBaseConfig):
     
     def get_loss(self):
         return self.train_loss_function.get_loss()
+    
+    def get_metrics(self):
+        return [eval("tf.keras.losses."+loss)() for loss in self.metrics]
 
 class TimeSeriesEvaluationConfig(TimeSeriesBaseConfig):
-    pass
+    loss_list: List[LossMetric]
+    def get_losses(self):
+        return [("tf.keras.losses."+loss)() for loss in self.loss_list]
+    
 
 class TimeSeriesPredictionConfig(TimeSeriesBaseConfig):
     pass

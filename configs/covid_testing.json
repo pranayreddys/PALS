@@ -18,7 +18,7 @@
     },
     "split_percentages": [0.6, 0.2, 0.2],
     "training_config":{
-        "model_class": "SimpleLinear",
+        "model_class": "SimpleVAR",
         "model_parameters": {},
         "context_window": 20,
         "lead_gap":2,
