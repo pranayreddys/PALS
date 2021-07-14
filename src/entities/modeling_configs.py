@@ -103,7 +103,7 @@ class TabularTrainingConfig(TabularBaseConfig):
     optimizer: Optimizer
     train_loss_function: Loss
     epochs: int
-    callbacks: list[str]
+    callbacks: List[str]
     batchsize: int
     def get_optimizer(self):
         self.optimizer.get_optimizer()

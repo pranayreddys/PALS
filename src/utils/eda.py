@@ -20,6 +20,7 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.stattools import grangercausalitytests
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
+from typing import Dict
 sns.set()
 warnings.filterwarnings('ignore')
 
@@ -88,7 +89,7 @@ def visualize(df: pd.DataFrame) -> None:
 
 
 def intracorrelation(input_df: pd.DataFrame,
-                     plot: bool = True) -> dict[str, pd.DataFrame]:
+                     plot: bool = True) -> Dict[str, pd.DataFrame]:
   """Calculates Intra-Feature correlation matrix.
 
 
