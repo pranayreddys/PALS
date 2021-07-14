@@ -35,6 +35,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
         predictions = tf.transpose(predictions, [1, 0, 2])
         # B x T x S
+        print(predictions.shape)
 
         return predictions
 

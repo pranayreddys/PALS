@@ -6,8 +6,8 @@ from runners.model_runner import Runner
 from utils.read_write_utils import is_file
 from numpy.random import seed
 seed(1)
-from tensorflow import set_random_seed
-set_random_seed(2)
+import tensorflow as tf
+tf.random.set_seed(2)
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
@@ -16,3 +16,4 @@ if __name__ == "__main__":
 	r = parse_file_as(Runner, args.config_path)
 	r.run()
 	
+r
