@@ -1,7 +1,6 @@
 {
+    "training": false,
     "presplit": true,
-    "train_path":"data/train.csv" ,
-    "val_path": "data/train.csv",
     "test_path": "data/test.csv",
     "dataset_spec":{
         "data_source": "data/train.csv",
@@ -34,8 +33,8 @@
         "train_loss_function":{
             "loss_type": "MeanSquaredError"
         },
-        "epochs": 1,
+        "epochs": 50,
         "batchsize": 256
     },
-    "test_output": "data/output3.csv" 
+    "test_output": "data/output2.csv" 
 }

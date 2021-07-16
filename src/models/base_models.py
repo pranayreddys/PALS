@@ -3,7 +3,8 @@ import numpy as np
 from dataset.dataset import TimeSeriesDataset, TabularDataset
 from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 from entities.modeling_configs import *
-
+import models.simple_transformations as simple_transform
+import os
 
 class BaseTimeSeriesModel(tf.keras.Model):
 #ASSUMPTION: All inputs are given in numeric format
@@ -13,6 +14,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
     def __init__(self, _dataspec: TimeSeriesDataSpec):
         super(BaseTimeSeriesModel, self).__init__()
         self.dataspec = _dataspec.copy(deep=True)
+        self.preprocessor = None
 
     def call(self, inputs):
         controls, states = inputs
@@ -89,6 +91,11 @@ class BaseTimeSeriesModel(tf.keras.Model):
 
         raise NotImplementedError
 
+
+    def _build_model(self, train_config):
+        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), 
+                    metrics=train_config.get_metrics(),run_eagerly=True)
+
     def simple_fit(self, train_data: TimeSeriesDataset, 
                         val_data: TimeSeriesDataset,
                         train_config: TimeSeriesTrainingConfig):
@@ -106,14 +113,32 @@ class BaseTimeSeriesModel(tf.keras.Model):
         #                                             patience=patience,
         #                                             mode='min')
         self.config = train_config
-        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), 
-                    metrics=train_config.get_metrics(),run_eagerly=True)
+        self.preprocessor = simple_transform.SimplePreprocessModel(column_transformations=self.config.column_transformations)
+        train_data= self.preprocessor.simple_fit_predict(train_data)
+        self._build_model(train_config)
+        self.dataspec = train_data.dataset_spec
         dataset = self._make_dataset(train_data, train_config)
         history = self.fit(dataset,  verbose=1,
                             epochs=train_config.epochs, shuffle=False
                         )
         return history
 
+    def save_model(self, model_save_folder):
+        
+        if not os.path.isdir(model_save_folder):
+            os.makedirs(model_save_folder)
+        
+        if not os.path.isdir(os.path.join(model_save_folder, "sklearn")):
+            os.makedirs(os.path.join(model_save_folder, "sklearn"))
+
+        self.preprocessor.save(os.path.join(model_save_folder, "sklearn/preprocessor.pickle"))
+        self.save_weights(os.path.join(model_save_folder, "keras"))
+
+    def load_model(self, model_save_folder, train_config):
+        self.preprocessor = simple_transform.SimplePreprocessModel()
+        self._build_model(train_config)
+        self.dataspec = self.preprocessor.load(os.path.join(model_save_folder, "sklearn/preprocessor.pickle"))
+        self.load_weights(os.path.join(model_save_folder, "keras"))
 
     def simple_evaluate(self, ts_data: TimeSeriesDataset, eval_config: TimeSeriesEvaluationConfig):
         # TODO: This evaluate is also a wrapper around the keras model functions
@@ -125,15 +150,21 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # we use the model to make predictions at t based on known observations at time (t-l) 
         # (or before) and then evaluate the accuracy
         # loss_values is a list of values corresponding to the loss functions in the config
+        ts_data = self.preprocessor.simple_predict(ts_data)
         self.config= eval_config
-        per_series= []
-        for _, grouped_subset in ts_data.subset_per_id():
+
+        per_series= {}
+        for id, grouped_subset in ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
             state_subset = self._get_data(grouped_subset, state_columns)
-            per_series.append(self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config)))
-        
-        return per_series
+            per_series[id]= self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config), return_dict=True)
+
+        eval_results = {}
+        for _id, eval_dict in per_series.items():
+            for k,value in eval_dict.items():
+                eval_results[("eval_"+_id+"_"+k)] = value 
+        return eval_results
 
     def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
         # TODO: Same two models here as well. This prediction assumes that the ts_data 
@@ -141,6 +172,7 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # need to raise an error if that is not true
         # output_data is a TimeSeriesDataset with the relevant columns having "_predicted" suffix
         self.config = predict_config
+        ts_data = self.preprocessor.simple_predict(ts_data)
         ret_ts_data = TimeSeriesDataset(ts_data.dataset_spec, blank_dataset=True)
         ret_ts_data.data = ts_data.data.copy()
         state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns

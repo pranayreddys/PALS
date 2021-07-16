@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 from entities.key_entities import TimeSeriesDataSpec, TabularDataSpec
-from entities.all_enums import OptimizerType, LossMetric, DistributionType, ModelClass
+from entities.all_enums import OptimizerType, LossMetric, DistributionType, ModelClass, ColumnTransform
 import tensorflow as tf
 import tensorflow_probability as tfp
 # from models.bp_models import *
@@ -16,8 +16,7 @@ class TimeSeriesBaseConfig(BaseModel):
     lead_gap: int 
     forecast_horizon: int 
     stride: int = 1
-    output_file_prefix: str = None
-    output_dir: str = None
+    model_save_folder: Optional[str]
 
 class Optimizer(BaseModel):
     custom: Optional[bool] = False
@@ -64,6 +63,7 @@ class TimeSeriesTrainingConfig(TimeSeriesBaseConfig):
     epochs: int
     metrics: List[LossMetric] = None #TODO
     batchsize: int
+    column_transformations: Dict[str, ColumnTransform] = None
 
     def get_optimizer(self):
         return self.optimizer.get_optimizer()
@@ -75,6 +75,7 @@ class TimeSeriesTrainingConfig(TimeSeriesBaseConfig):
         return [eval("tf.keras.losses."+loss)() for loss in self.metrics]
 
 class TimeSeriesEvaluationConfig(TimeSeriesBaseConfig):
+    #TODO: use this config in simple_evaluate
     loss_list: List[LossMetric]
     def get_losses(self):
         return [("tf.keras.losses."+loss)() for loss in self.loss_list]
@@ -96,6 +97,7 @@ class TabularBaseConfig(BaseModel):
     data_spec: TabularDataSpec
     model_class: ModelClass #TODO
     model_parameters: Dict
+    column_transformations: Dict[str, ColumnTransform] = None
 
 class TabularTrainingConfig(TabularBaseConfig):
     search_space: Dict

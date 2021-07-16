@@ -8,6 +8,7 @@ from numpy.random import seed
 seed(1)
 import tensorflow as tf
 tf.random.set_seed(2)
+import mlflow
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()

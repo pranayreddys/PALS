@@ -19,8 +19,13 @@ class TimeSeriesDataSpec(BaseModel):
    control_input_columns: List[str] 
    dependent_state_columns: List[str] 
    independent_state_columns: List[str]
-   column_transformations: Dict[str, ColumnTransform] = None
    #TODO: Add validation everywhere - in this case, some of it can happen here some in the dataset construction
+   def replace(self, col, newcolumns):
+      for column_list in [self.series_attribute_columns, self.control_input_columns, 
+            self.dependent_state_columns, self.independent_state_columns]:
+         if col in column_list:
+            column_list.remove(col)
+            column_list.append(newcolumns)
 
 
 
@@ -32,8 +37,25 @@ class TabularDataSpec(BaseModel):
    dependent_columns: List[str] 
    independent_columns: List[str]
    target_columns: List[str]
-   column_transformations: Dict[str, ColumnTransform] = None
    
+   def delete(self, columns):
+      setcols = set(columns)
+      setinstance_ids = set(self.instance_id_columns)
+      setdep_cols = set(self.dependent_columns)
+      setindep_cols = set(self.independent_columns)
+      settarget_cols = set(self.target_columns)
+      self.instance_id_columns = list(setinstance_ids.difference(setcols))
+      self.dependent_columns = list(setdep_cols.difference(setcols))
+      self.independent_columns = list(setindep_cols.difference(setcols))
+      self.target_columns = list(settarget_cols.difference(setcols))
+   
+   def replace(self, col, newcolumns):
+      for column_list in [self.instance_id_columns, self.dependent_columns, 
+            self.independent_columns, self.target_columns]:
+         if col in column_list:
+            column_list.remove(col)
+            column_list.append(newcolumns)
+      
 
    #TODO: need additional elements for counterfactual evaluation 
    

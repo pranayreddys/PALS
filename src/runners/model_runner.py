@@ -12,13 +12,13 @@ from entities.all_enums import ExperimentMode
 from models.models import get_model
 import tabulate
 from utils.eda import visualize
-
+from publishers.mlflow_logging import log_to_mlflow
 class Runner(BaseModel):
     training: bool = True
     dataset_spec: TimeSeriesDataSpec
     presplit: bool = False
     mode: ExperimentMode = ExperimentMode.MultiTimeSeries
-    test_output: str
+    test_output: Optional[str]=None
     split_percentages: Optional[List[float]] 
     train_path: Optional[str]
     val_path: Optional[str]
@@ -27,22 +27,27 @@ class Runner(BaseModel):
     eval_config: Optional[TimeSeriesEvaluationConfig] = None
     predict_config: Optional[TimeSeriesPredictionConfig] = None
     model_checkpoint: Optional[str]
-    training_stats: Optional[str]=None
-    evaluation_stats: Optional[str]=None
 
-    #TODO: write validators to check existence of files above
-    #TODO: write validators to ensure contradictory inputs not provided.
     def _validate(self):
         assert(self.presplit == (self.split_percentages==None))
-        if self.presplit:
-            for path in [self.train_path, self.val_path, self.test_path]:
-                is_file(path)
         if self.training:
+            if self.presplit:
+                for path in [self.train_path, self.val_path, self.test_path]:
+                    is_file(path)
             assert(self.training_config)
             if not self.eval_config:
                 self.eval_config = self.training_config
             if not self.predict_config:
                 self.predict_config = self.training_config
+            assert(self.training_config.model_save_folder)
+        else:
+            is_file(self.test_path)
+            assert(self.training_config)
+            if not self.predict_config:
+                self.predict_config = self.training_config
+            assert(self.presplit)
+            assert(self.predict_config.model_save_folder)
+
 
             
             
@@ -63,26 +68,30 @@ class Runner(BaseModel):
                 val_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
                 self.dataset_spec.data_source = self.test_path
                 test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
-            
-            #Preprocess the data: TODO Move to one big model
-            preprocessor = SimplePreprocessModel(self.dataset_spec.column_transformations)
-            preprocessor.simple_fit(train_dataset)
-            train_dataset  = preprocessor.simple_predict(train_dataset)
-            val_dataset = preprocessor.simple_predict(val_dataset)
-            test_dataset = preprocessor.simple_predict(test_dataset)
-            ###
-
             model = get_model(self.training_config)(train_dataset.dataset_spec)
             model.set_params(self.training_config.model_parameters)
-            #TODO: Model checkpoints, fit only when required
             history = model.simple_fit(train_dataset, val_dataset, self.training_config)
-            with open(self.training_stats, 'w') as f:
-                f.write(tabulate.tabulate(history.history, headers=history.history.keys()))
-            prediction = model.simple_predict(test_dataset, self.predict_config)
-            prediction.data.to_csv(self.test_output)
-            eval_results = model.simple_evaluate(val_dataset, self.predict_config)
-            with open(self.evaluation_stats, 'w') as f:
-                f.write(tabulate.tabulate(eval_results, headers=history.history.keys()))
-
+            artifacts = {}
+            model.save_model(self.training_config.model_save_folder)
+            artifacts["model_path"] = self.training_config.model_save_folder
+            if self.test_output:
+                prediction = model.simple_predict(test_dataset, self.predict_config)
+                prediction.data.to_csv(self.test_output)
+                artifacts["test_output"] = self.test_output
+            eval_results = model.simple_evaluate(test_dataset, self.predict_config)
+            log_to_mlflow(self.dict(), history.history|eval_results, artifacts)
         else:
-            pass
+            self.dataset_spec.data_source = self.test_path
+            test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
+            model = get_model(self.training_config)(self.dataset_spec)
+            model.set_params(self.training_config.model_parameters)
+            model.load_model(self.training_config.model_save_folder, self.training_config)
+            artifacts = {}
+            if self.test_output:
+                prediction = model.simple_predict(test_dataset, self.predict_config)
+                prediction.data.to_csv(self.test_output)
+                artifacts["test_output"] = self.test_output
+            
+            eval_results = model.simple_evaluate(test_dataset, self.predict_config)
+            eval_results= {("eval_"+id+"_"+k):value for k,value in eval_dict.items() for id,eval_dict in eval_results}
+            log_to_mlflow(self.dict(), eval_results, artifacts)
