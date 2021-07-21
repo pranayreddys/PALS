@@ -8,7 +8,7 @@ from utils.data_manipulation_utils import flatten
 # TRACKING_URL = ""
 
 
-def log_to_mlflow(params, metrics, artifact_dict, tags=None, experiment_name="default", run_name=None):
+def log_to_mlflow(params, metrics, artifact_dict, tags=None, experiment_name="Default", run_name=None):
     """Logs metrics, parameters and artifacts to MLflow
     Args:
         params (dict of {str: str}): input parameters to the model
@@ -32,8 +32,6 @@ def log_to_mlflow(params, metrics, artifact_dict, tags=None, experiment_name="de
     params = flatten(params)
     metrics = flatten(metrics)
     artifact_dict = flatten(artifact_dict)
-    print(metrics)
-    print(artifact_dict)
 
     with mlflow.start_run(run_name=run_name):
         for k,v in params.items():

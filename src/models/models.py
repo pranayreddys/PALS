@@ -20,3 +20,6 @@ class SimpleVAR(BaseTimeSeriesModel):
         # control_input_vals.view((control_input_vals.shape[0], -1))
         out = self.linear(state_vals)
         return out
+    
+    def set_params(self, params):
+        pass

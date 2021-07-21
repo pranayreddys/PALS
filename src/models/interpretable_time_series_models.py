@@ -29,7 +29,7 @@ class SimpleDelayedEffectModel(BaseTimeSeriesModel):
         self.combination = _model_config.combination
 
 
-    def __predict_one_step(dependent_state_vals,independent_state_vals,control_input_vals):
+    def __predict_one_step(dependent_state_vals, independent_state_vals,control_input_vals):
         #TODO: need to implement this based on the model configuration
         return output
 

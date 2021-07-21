@@ -123,12 +123,14 @@ class TimeSeriesDataset:
             test_dataset.data = self._id_selection(X_test)
             test_dataset._sort_values()
             return train_dataset, val_dataset, test_dataset
-        else:
+        elif experiment_mode==ExperimentMode.SimpleForecast:
+            print("Mode not implemented, please implement this mode or use presplit datasets")
+            raise NotImplementedError
             #TODO: Complete this training mode
             size = len(self.data)
             train_split_end = int(size*split_percentages[0])
             val_split_start = train_split_end-trainingconfig.context_window-trainingconfig.lead_gap
-            assert(val_split_start>0)          
+            assert val_split_start>0    
             val_split_end = int(size*split_percentages[1])
             test_split_start = val_split_end-trainingconfig.context_window-trainingconfig.lead_gap
 

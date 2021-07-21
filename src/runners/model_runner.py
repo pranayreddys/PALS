@@ -13,6 +13,7 @@ from models.models import get_model
 import tabulate
 from utils.eda import visualize
 from publishers.mlflow_logging import log_to_mlflow
+
 class Runner(BaseModel):
     training: bool = True
     dataset_spec: TimeSeriesDataSpec
@@ -34,7 +35,7 @@ class Runner(BaseModel):
             if self.presplit:
                 for path in [self.train_path, self.val_path, self.test_path]:
                     is_file(path)
-            assert(self.training_config)
+            assert self.training_config
             if not self.eval_config:
                 self.eval_config = self.training_config
             if not self.predict_config:
@@ -42,14 +43,13 @@ class Runner(BaseModel):
             assert(self.training_config.model_save_folder)
         else:
             is_file(self.test_path)
-            assert(self.training_config)
+            assert self.training_config
             if not self.predict_config:
                 self.predict_config = self.training_config
-            assert(self.presplit)
-            assert(self.predict_config.model_save_folder)
+            assert self.presplit
+            assert self.predict_config.model_save_folder
 
 
-            
             
     def run(self):
         #TODO: Training, eval, test splitting? 

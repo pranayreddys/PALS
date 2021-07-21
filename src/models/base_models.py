@@ -5,32 +5,60 @@ from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
 from entities.modeling_configs import *
 import models.simple_transformations as simple_transform
 import os
+import random
+import abc
 
-class BaseTimeSeriesModel(tf.keras.Model):
-#ASSUMPTION: All inputs are given in numeric format
-#ASSUMPTION 2: Output is assumed to be the next state of the time series
-#TODO: Add second dataloader that handles each time series as different points.  
+class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
+    """
+    This abstract class is the parent class for all time series models. The base class
+    unrolls time series step by step using the _predict_one_step function. For example,
+    given X[1:T], the time series model will compute X[T+1] = _predict_one_step(X[1:T])
+    This input is then fed back to get X[T+2] = _predict_one_step(X[2:(T+1)]) and so on.
+    Assumptions:
+    1. The inputs are all in numeric or categorical format. In case the input is provided as
+    categorical format, the input transformation needs to be specified in column transformations.
+    2. Basic model assumed C[0] -> S[0]
+                            |       |
+                           C[1] -> S[1]
+                           |        | 
+                           C[2] -> S[2]
+        and so on, where C denotes control and S denotes state.
+        Special care needs to be taken in indexing control, since C[0:1], S[0] will be used to predict S[1]
+    3. There is a single unique ID column for each time series in the dataset
+    """
 
     def __init__(self, _dataspec: TimeSeriesDataSpec):
         super(BaseTimeSeriesModel, self).__init__()
         self.dataspec = _dataspec.copy(deep=True)
-        self.preprocessor = None
+        self.preprocessor = None # Will be initialized in the fit
 
     def call(self, inputs):
+        """
+        Implements the call method used by keras models. Internally, the _predict_one_step
+        method is called to compute prediction one day into the future 
+        """
+
         controls, states = inputs
-        controls = tf.convert_to_tensor(controls)
+        
+        controls = tf.convert_to_tensor(controls) 
+        # Note that controls have the shape batch x (context_window + lead_gap + forecast_horizon) x control_feature_size
+        
         states = tf.convert_to_tensor(states)
+        # Note that state only has the shape batch x context_window x state_feature_size
+
         predictions = []
         for horizon_step in range(self.config.lead_gap + self.config.forecast_horizon):
             new_state = self._predict_one_step(states, 
                                 controls[horizon_step: self.config.context_window+1+horizon_step])
-            if horizon_step >= self.config.lead_gap:
+            
+            
+            if horizon_step >= self.config.lead_gap: 
                 predictions.append(new_state)
-            # states[:, 0 : states.shape[1]-1]=  states[:, 1:]
-            # states[:, states.shape[1]-1] = new_state
+
             states = tf.concat((states[:, 1:], tf.reshape(new_state,[new_state.shape[0], 1,-1])), axis=1)
             # Input 1 to the function has shape B x T-1 x S
             # Input 2 has shape B x S, so needs to be reshaped to B x 1 x S and stacked
+            # In pseudocode form, the above line is equivalent to X[1:T] = X[2:T+1]
 
         predictions = tf.stack(predictions)
         # T x B x S
@@ -41,6 +69,11 @@ class BaseTimeSeriesModel(tf.keras.Model):
         return predictions
 
     def _split_window(self, timeseries, config):
+        """
+        Function that breaks a time series window that consists of both control and state inputs
+        into the respective components. The control and state horizons are of different length
+        since control is under model control unlike state.
+        """
         dim_controls = len(self.dataspec.control_input_columns) if self.dataspec.control_input_columns else 1
         controls = timeseries[:, :, 0:dim_controls]
         states = timeseries[:,:,dim_controls:]
@@ -48,6 +81,9 @@ class BaseTimeSeriesModel(tf.keras.Model):
                 states[:,(config.context_window+config.lead_gap):config.context_window+config.lead_gap+config.forecast_horizon]
 
     def _make_subset(self,timeseries, config):
+        """
+        Dataloader preparation in the control, state format for a single time series
+        """
         assert(config.forecast_horizon>=1)
         assert(config.context_window>=1)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
@@ -64,54 +100,66 @@ class BaseTimeSeriesModel(tf.keras.Model):
         return ds
 
     def _make_dataset(self, ts_data: TimeSeriesDataset, config):
+        """
+        For the problem that we are interested in, there are multiple time series that are determined
+        by the ID of the 
+        """
         dataset_subsets = []
+        i = 0
+        dataset_order = []
         for _, grouped_subset in ts_data.subset_per_id():
             control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
             state_subset = self._get_data(grouped_subset, self.dataspec.independent_state_columns
                                                 + self.dataspec.dependent_state_columns)
 
             dataset_subsets.append(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), config))
+            for _ in range(len(dataset_subsets[i])):
+                dataset_order.append(i)
+            i += 1
         
-        return dataset_subsets[0] #FIXME
-        # return tf.data.experimental.choose_from_datasets(dataset_subsets,
-        #                                 tf.data.Dataset.range(len(dataset_subsets)))
+        random.shuffle(dataset_order)
+        dataset_order = np.array(dataset_order, dtype=np.int64)
+        return tf.data.experimental.choose_from_datasets(dataset_subsets,
+                tf.data.Dataset.from_tensor_slices(dataset_order))
+
     @staticmethod
     def _get_data(inputs, cols):
+        """
+        If cols is left blank, returns a dummy array (useful when doing forecasting instead 
+        of control)
+        """
         if not cols:
             return np.array(list(range(len(inputs)))).reshape(-1,1)
         return inputs[cols].values.reshape(len(inputs),-1)
 
+    @abc.abstractmethod
     def _predict_one_step(self, state_vals, control_input_vals):
-        # This is the main function to be implemented by the derived classes
-        # inputs are tensors and output is a tensor
-        # but internally we can convert the input tensors to pandas or whatever form is convenient
-        # and do the computation with pandas and convert output back to tensor
-        # if we are using keras models, then keeping it as tensors is simpler
-        # alternate option insteaf of NotImplementedError is to use abstract methods
+        """This is the main function to be implemented by the derived classes
+        inputs are tensors and output is a tensor
+        but internally we can convert the input tensors to pandas or whatever form is convenient
+        and do the computation with pandas and convert output back to tensor
+        if we are using keras models, then keeping it as tensors is simpler. 
+        """
+        pass
 
-        raise NotImplementedError
 
-
-    def _build_model(self, train_config):
-        self.compile(loss=train_config.get_loss(), optimizer=train_config.get_optimizer(), 
-                    metrics=train_config.get_metrics(),run_eagerly=True)
+    def _build_model(self, train_config: TimeSeriesTrainingConfig):
+        """
+        Compiles and builds a keras eager model, with the correct loss, optimizer, and
+        metrics
+        """
+        self.compile(loss=train_config.get_loss(self.dataspec.independent_state_columns
+                                    + self.dataspec.dependent_state_columns),
+                    optimizer=train_config.get_optimizer(), 
+                    metrics=train_config.get_metrics(),
+                    run_eagerly=True)
 
     def simple_fit(self, train_data: TimeSeriesDataset, 
                         val_data: TimeSeriesDataset,
                         train_config: TimeSeriesTrainingConfig):
-        # TODO: This fit is primarily a wrapper around the keras model compile and fit
-        # need to massage the dataset and config into appropriate form
-        # There are two modes of computing accuracy: fixed lead or fixed anchor index + horizon
-        # which can be used to fit the model - we can implement the latter one first
-        # sets the model params
-        # ASSUMPTION: TimeSeriesDataset is the train split.
-        # control_data = self._get_data(train_data.data, self.dataspec.control_input_columns)
-        # state_data = self._get_data(train_data.data, self.dataspec.independent_state_columns
-        #                                         + self.dataspec.dependent_state_columns)
-        
-        # early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-        #                                             patience=patience,
-        #                                             mode='min')
+        """This fit is primarily a wrapper around the keras model compile and fit
+        need to massage the dataset and config into appropriate form
+        """
         self.config = train_config
         self.preprocessor = simple_transform.SimplePreprocessModel(column_transformations=self.config.column_transformations)
         train_data= self.preprocessor.simple_fit_predict(train_data)
@@ -119,12 +167,16 @@ class BaseTimeSeriesModel(tf.keras.Model):
         self.dataspec = train_data.dataset_spec
         dataset = self._make_dataset(train_data, train_config)
         history = self.fit(dataset,  verbose=1,
-                            epochs=train_config.epochs, shuffle=False
-                        )
-        return history
+                        epochs=train_config.epochs, shuffle=False)
+        return history # Log data returned
 
     def save_model(self, model_save_folder):
-        
+        """
+        Used for saving model and end of training.
+        Currently no method for checkpointing models epoch by epoch, but can be extended
+        by using custom callbacks along with this method. Also saves the simple preprocessor
+        model
+        """
         if not os.path.isdir(model_save_folder):
             os.makedirs(model_save_folder)
         
@@ -135,21 +187,20 @@ class BaseTimeSeriesModel(tf.keras.Model):
         self.save_weights(os.path.join(model_save_folder, "keras"))
 
     def load_model(self, model_save_folder, train_config):
+        """
+        Loads a saved model given a file path and the original training config.
+        """
         self.preprocessor = simple_transform.SimplePreprocessModel()
-        self._build_model(train_config)
         self.dataspec = self.preprocessor.load(os.path.join(model_save_folder, "sklearn/preprocessor.pickle"))
+        self._build_model(train_config)
         self.load_weights(os.path.join(model_save_folder, "keras"))
 
     def simple_evaluate(self, ts_data: TimeSeriesDataset, eval_config: TimeSeriesEvaluationConfig):
-        # TODO: This evaluate is also a wrapper around the keras model functions
-        # Again two models: fixed lead or anchor time + horizon
-        # In the fixed anchor time case, we use that point's (or before) observations
-        # to generate predictions for the future horizon and then evaluate the accuracy of 
-        # the ground truth vs. the predicted values. 
-        # In the fixed lead (say l), for every time point t that needs to be evaluated
-        # we use the model to make predictions at t based on known observations at time (t-l) 
-        # (or before) and then evaluate the accuracy
-        # loss_values is a list of values corresponding to the loss functions in the config
+        """
+        Simple wrapper around the keras evaluate function. Outputs the metrics that were specified during
+        training. For additonal/more complex metrics, further evaluation functions need to be defined, along
+        with calls to simple_predict.
+        """
         ts_data = self.preprocessor.simple_predict(ts_data)
         self.config= eval_config
 
@@ -167,10 +218,10 @@ class BaseTimeSeriesModel(tf.keras.Model):
         return eval_results
 
     def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
-        # TODO: Same two models here as well. This prediction assumes that the ts_data 
-        # actually has the control inputs (if any)  populated for the horizon 
-        # need to raise an error if that is not true
-        # output_data is a TimeSeriesDataset with the relevant columns having "_predicted" suffix
+        """
+        Returns a forecast_horizon x state vector for each prediction point. Data loading is performed
+        similar to train.
+        """
         self.config = predict_config
         ts_data = self.preprocessor.simple_predict(ts_data)
         ret_ts_data = TimeSeriesDataset(ts_data.dataset_spec, blank_dataset=True)
@@ -205,8 +256,11 @@ class BaseTimeSeriesModel(tf.keras.Model):
         # We might prefer to use bidirectional models here as well
         return
     
+    @abc.abstractmethod
     def set_params(self, params):
-        ## Needs to be overloaded
+        """
+        Model specific parameters
+        """
         pass
     
 class BaseControlSystemModel(BaseTimeSeriesModel):
@@ -220,7 +274,7 @@ class BaseControlSystemModel(BaseTimeSeriesModel):
         #return control_vals
 
 
-class BaseTransformationModel(tf.keras.Model):
+class BaseTransformationModel(tf.keras.Model, abc.ABC):
 
     def __init__(self, _dataspec: TabularDataSpec):
         super(BaseTransformationModel, self).__init__()
@@ -228,10 +282,8 @@ class BaseTransformationModel(tf.keras.Model):
         
 
     def call(self, inputs):
-        # dependent_vals = _get_data(self.dataspec.dependent_columns, inputs)
-        # independent_vals = _get_data(self.dataspec.independent_columns, inputs)
-        output = _predict(inputs[:, :len(self.dataspec.dependent_columns)],
-                         inputs[:, len(self.dataspec.dependent_columns):])
+        output = _predict(inputs[:, :len(self.dataspec.independent_columns)],
+                         inputs[:, len(self.dataspec.independent_columns):])
         return output
 
     @staticmethod
@@ -239,21 +291,21 @@ class BaseTransformationModel(tf.keras.Model):
         #Returning numpy arrays
         return inputs[cols].values
 
-    def _predict(self, independent_vals):
+    @abc.abstractmethod
+    def _predict(self, independent_vals, dependent_vals):
         # TODO: This is the main function to be implemented by the derived classes
         # inputs are tensors and output is a tensor
         # but internally we can convert the input tensors to pandas or whatever form is convenient
         # and do the computation with pandas and convert output back to tensor
         # if we are using keras models, then keeping it as tensors is simpler
         # alternate option insteaf of NotImplementedError is to use abstract methods
-
-        raise NotImplementedError
+        pass
 
     def simple_fit(self, tb_data: TabularDataset, train_config: TabularTrainingConfig):
         self.compile(loss=train_config.get_loss(),
                         optimizer=train_config.get_optimizer(),
-                        metrics=[])
-        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+                        metrics=train_config.get_metrics())
+        columns = self.dataspec.independent_columns + self.dataspec.dependent_columns 
         history = self.fit(x=self._get_data(tb_data.data, columns), 
                             y =self._get_data(tb_data.data, self.dataspec.target_columns), 
                             epochs=train_config.epochs, 
@@ -264,12 +316,12 @@ class BaseTransformationModel(tf.keras.Model):
 
     def simple_evaluate(self, tb_data: TabularDataset, eval_config: TabularEvaluationConfig):
         # TODO: Parse tabularevaluationconfig and pass arguments to evaluate.
-        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+        columns = self.dataspec.independent_columns + self.dataspec.dependent_columns 
         return self.evaluate(x=self._get_data(columns, tb_data.data),
                             y=self._get_data(self.dataspec.target_columns, tb_data.data))
 
     def simple_predict(self, tb_data: TabularDataset, predict_config: TabularPredictionConfig):
-        columns = self.dataspec.dependent_columns + self.dataspec.independent_columns
+        columns = self.dataspec.independent_columns + self.dataspec.dependent_columns
         output_data = TabularDataset(tb_data.dataset_spec, blank_dataset=True)
         output = self.predict(self._get_data(columns, tb_data.data))
         for index, target in enumerate(self.dataspec.target_columns):

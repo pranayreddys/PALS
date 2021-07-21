@@ -32,6 +32,8 @@
             "optimizer_type": "Adam"
         },
         "train_loss_function":{
+            "custom": true,
+            "column_weights": {"Confirmed":0.33, "Recovered":0.33 , "Deceased":0.33, "Other":0.01},
             "loss_type": "MeanSquaredError"
         },
         "epochs": 1,

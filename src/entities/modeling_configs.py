@@ -30,28 +30,45 @@ class Optimizer(BaseModel):
             return eval("tf.keras.optimizers."+self.optimizer_type)(learning_rate = self.learning_rate)
         else:
             # To be filled for custom optimizers and learning rate schedules
-            pass
+            print("Custom optimizers not implemented")
+            raise NotImplementedError
 
 
-# class LossFunctionSpec(BaseModel):
-#    is_column_aggregation: bool
-#    is_cell_aggregation: bool
-#    metric_name: LossMetric
-#    column_weights: Dict[str,float]
 
 class Loss(BaseModel):
     custom: Optional[bool] = False
-    loss_type: LossMetric
+    loss_type: Optional[LossMetric] = None
     column_weights: Optional[Dict[str, float]] = None
+    column_loss_type: Optional[Dict[str, LossMetric]] = None
     is_column_aggregation: bool = True
     is_cell_aggregation: bool = True
     # reduction: str # Options mean, 
-    def get_loss(self):
+    def get_loss(self, column_order: List[str] = None):
     #TODO: add more support for custom losses, also add more support for params to loss functions
         if not self.custom:
+            assert self.loss_type, "loss_type required if not Custom Loss"
             return eval("tf.keras.losses."+self.loss_type)()
         else:
-            pass
+            assert column_order, "Column Order not provided"
+            if self.loss_type:
+                loss = eval("tf.keras.losses."+self.loss_type)()
+            else:
+                assert self.column_loss_type, "Provide columnwise dict[str, LossMetric if not providing single loss"
+                self.column_loss_type = {k: eval("tf.keras.losses."+loss_type)() for k, loss_type in self.column_loss_type.items()}
+            assert not((self.column_loss_type is not None) and (self.loss_type is not None)),"Both column loss type and loss type provided"
+            column_order = {column: idx for idx, column in enumerate(column_order)}
+            def ret_loss(y_true, y_pred):
+                nonlocal loss
+                l = 0
+                if not self.column_weights:
+                    self.column_weights = {k: 1 for k in column_order.keys()}
+                for k,v in self.column_weights.items():
+                    if not self.loss_type:
+                        loss = self.column_loss_type[k]
+                    l += (v*loss(y_true[:,:,column_order[k]], y_pred[:,:,column_order[k]]))
+                return l
+            return ret_loss
+
         
 
 
@@ -68,8 +85,8 @@ class TimeSeriesTrainingConfig(TimeSeriesBaseConfig):
     def get_optimizer(self):
         return self.optimizer.get_optimizer()
     
-    def get_loss(self):
-        return self.train_loss_function.get_loss()
+    def get_loss(self, column_order=None):
+        return self.train_loss_function.get_loss(column_order)
     
     def get_metrics(self):
         return [eval("tf.keras.losses."+loss)() for loss in self.metrics]
@@ -112,6 +129,7 @@ class TabularTrainingConfig(TabularBaseConfig):
     
     def get_loss(self):
         self.loss.get_loss()
+    
 
 class TabularEvaluationConfig(TabularBaseConfig):
     pass
