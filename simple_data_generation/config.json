@@ -9,11 +9,12 @@
             },
             "min_bound": 5.0,
             "max_bound" :  12.0,
-            "noise_type" : "normal",
-            "noise_params": {
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
                 "loc": 0.0,
                 "scale": 1.0
-            }
+            },
+            "healthy_baseline": 10.0
         },
         {
             "name": "salt",
@@ -24,14 +25,15 @@
             },
             "min_bound": 0.0,
             "max_bound" :  1.0,
-            "noise_type" : "normal",
-            "noise_params": {
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
                 "loc": 0.0,
                 "scale": 0.05
-            }
+            },
+            "healthy_baseline": 0.2
         }  
     ],
-    "population_size": 5,
+    "population_size": 100,
     "nudge_spec": {
         "num_actions": 2,
         "init_period": 14,
@@ -39,7 +41,7 @@
         "washout_period": 7
     },
     "cause_effect": {
-        "profiles":
+        "nudge_uat":
             {"1" : {
                 "sleep":{
                     "lag": 7,
@@ -49,7 +51,8 @@
                 "salt":{
                     "lag": 7,
                     "min_bound": 0,
-                    "max_bound": 0.07
+                    "max_bound": 0.07,
+                    "negative": true
                 }
             },
             "2" : {
@@ -62,9 +65,90 @@
                     "lag": 7,
                     "min_bound": 0,
                     "max_bound": 0.01,
+                    "negative": true,
                     "return_to_mean": false
                 }
             }
+        },
+        "uat_bps":{
+            "salt": {
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 100.0,
+                    "max_bound": 200.0
+                },
+                "dbp": {
+                    "lag": 7,
+                    "min_bound": 50.0,
+                    "max_bound":  80.0
+                }
+            },
+            "sleep":{
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 4.0,
+                    "max_bound": 5.0,
+                    "negative": true
+                },
+                "dbp": {
+                    "lag": 7,
+                    "min_bound": 3.0,
+                    "max_bound":  4.0,
+                    "negative": true
+                }
+            }
         }
-    }
+    },
+    "physiological_response": {
+        "name": "physiological_response",
+        "init_distribution_type": "beta",
+        "init_params": {
+            "a": 8,
+            "b": 2
+        },
+        "min_bound": 0,
+        "max_bound": 1
+    },
+    "inertia": {
+        "name": "inertia",
+        "init_distribution_type": "beta",
+        "init_params": {
+            "a": 6,
+            "b": 4
+        },
+        "min_bound": 0,
+        "max_bound": 1
+    },
+    "final_output_specs": [
+        {
+            "name": "sbp",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 120.0,
+                "scale": 30.0
+            },
+            "min_bound": 70.0,
+            "max_bound" :  280.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 10.0
+            }
+        },
+        {
+            "name": "dbp",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 80.0,
+                "scale": 20.0
+            },
+            "min_bound": 40.0,
+            "max_bound" :  200.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 10.0
+            }
+        }  
+    ]
 }

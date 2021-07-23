@@ -12,6 +12,7 @@ import random
 from copy import deepcopy
 import pandas as pd
 import argparse
+import os
 
 random.seed(0)
 np.random.seed(0)
@@ -19,6 +20,10 @@ np.random.seed(0)
 class VariableName(str, enum.Enum):
     sleep = 'sleep'
     salt = 'salt'
+    inertia = 'inertia'
+    physiological_response = 'physiological_response'
+    dbp = 'dbp'
+    sbp = 'sbp'
 
 @enum.unique
 class DistributionType(str, enum.Enum):
@@ -34,13 +39,30 @@ class CurveType(str, enum.Enum):
     unimodal = 'unimodal'
 
 class VariableSpec(BaseModel):
+    """
+    This class describes configuration parameters required for UAT/BP generation. Key points:
+    name: a string of type VariableName (which is an enum)
+    init_distribution_type: Specifies the population-level distribution that a person's baseline numbers
+    need to be sampled from
+    init_params: Specifies the params required for init_distribution_type
+    min_bound: The minimum possible value that can be taken by this variable
+    max_bound: The maximum possible value that can be taken by this variable
+    healthy_baseline: This is compulsory for UAT variables and optional otherwise. For UAT variables,
+    this number is required for computing delayed effect of changes in UAT w.r.t BP (Refer: Delayed Effect Model)
+    observation_noise_type: Note that even though a person has a certain UAT (e.g. 2000 steps),
+    there could be day-to-day fluctuations through measurement noise and simple fluctuations in the person's behavior
+    which cannot be predicted. This variable captures that distribution type.
+    observation_noise_params: The parameters that need to be passed into the observation noise distribution. Noise will 
+    be sampled with these params. 
+    """
     name: VariableName
     init_distribution_type: DistributionType
     init_params: Dict[str, float]
     min_bound: float
     max_bound: float
-    noise_type: DistributionType
-    noise_params: Dict[str, float]
+    healthy_baseline: float = 0 # Compulsory parameter to be specified in config for UAT variables
+    observation_noise_type: Optional[DistributionType] # Needs to be specified for UAT and BP
+    observation_noise_params: Optional[Dict[str, float]] # Needs to be specified for UAT and BP
     
     def sample(self, n: int = 1):
         params = self.init_params.copy()
@@ -53,23 +75,31 @@ class Variable:
         self.min_bound = var_spec.min_bound
         self.max_bound = var_spec.max_bound
         self.value = var_spec.sample()
-        self.noise_type = var_spec.noise_type
-        self.noise_params = var_spec.noise_params
+        self.noise_type = var_spec.observation_noise_type
+        self.noise_params = var_spec.observation_noise_params
+        self.healthy_baseline = var_spec.healthy_baseline 
     
     def update(self, inc_value: float):
         self.value = min(max(self.min_bound, self.value+inc_value), self.max_bound)
     
     def observe(self):
-        return min(max(self.min_bound, self.value 
-                        + (eval("np.random."+self.noise_type)(**self.noise_params)))
-                        ,self.max_bound)
+        if self.noise_type == DistributionType.normal:
+            sampled_value = self.value + (eval("np.random."+self.noise_type)(**self.noise_params))
+        elif self.noise_type == DistributionType.beta:
+            a = self.value*self.noise_params["sum_alpha_beta"]
+            b = self.noise_params["sum_alpha_beta"] - a
+            sampled_value = np.random.beta(a,b)
+        else:
+            raise NotImplementedError
+        return min(max(self.min_bound, sampled_value),self.max_bound)
     
 class Effect(BaseModel):
     lag: int
     curve_type: CurveType = CurveType.unimodal
-    min_bound: float
-    max_bound: float
+    min_bound: float # assumed positive
+    max_bound: float # assumed positive, represents only magnitude. Sign represented by negative
     return_to_mean: bool = True
+    negative: Optional[bool] = False
 
     @property
     def effect(self):
@@ -92,24 +122,41 @@ class Effect(BaseModel):
                 if self.return_to_mean:
                     ret_array = np.append(ret_array, 0)
                 assert ret_array.shape[0]== (self.lag+1)
-                effect = ret_array[1:] - ret_array[0:-1] 
+                effect = ret_array[1:] - ret_array[0:-1]
+                if self.negative:
+                    effect = -effect 
                 self.__dict__['effect'] = effect
-        return effect        
+        return effect
 
 class EffectProfile(BaseModel):
-    profiles: Dict[int, Dict[VariableName, Effect]]
-    max_lag: int = 0
-    def init_effect_profile(self):
-        for v in self.profiles.values():
+    nudge_uat: Dict[int, Dict[VariableName, Effect]] # Action -> Dictionary[VariableName, Effect] mapping
+    uat_bps: Dict[VariableName, Dict[VariableName, Effect]] 
+    max_lag_nudge_uat: Optional[int] = 0 #HACK, Internal Parameter
+    max_lag_uat_bp: Optional[int] = 0 #HACK, Internal Parameter
+    uat_bps_array: Optional[str] = None #HACK, This is an internal numpy array param
+
+    def init_effect_profile(self, variable_specs: List[VariableSpec], final_output_specs: List[VariableSpec]):
+        for v in self.nudge_uat.values():
             for e in v.values():
-                self.max_lag = max(self.max_lag, e.lag)
+                self.max_lag_nudge_uat= max(self.max_lag_nudge_uat, e.lag)
+        
+        for v in self.uat_bps.values():
+            for e in v.values():
+                self.max_lag_uat_bp = max(self.max_lag_uat_bp, e.lag)
+        
+        # (UAT * lag uncoiled needs to be multiplied by final x (UAT * lag) 
+        self.uat_bps_array = np.zeros((len(final_output_specs), len(variable_specs)*self.max_lag_uat_bp))
+        for i,output_spec in enumerate(final_output_specs):
+            for j,var_spec in enumerate(variable_specs): 
+                if output_spec.name in self.uat_bps[var_spec.name]:
+                    self.uat_bps_array[i,j::len(variable_specs)] = self.uat_bps[var_spec.name][output_spec.name].effect
     
-    def update_state(self, nudges, state: Dict[VariableName, Variable]):
-        nudges = nudges[-min(self.max_lag, len(nudges)):]
+    def update_uat(self, nudges: List[int], state: Dict[VariableName, Variable], inertia: float):
+        nudges = nudges[-min(self.max_lag_nudge_uat, len(nudges)):]
         updated_variables : Dict[VariableName, float] = {}
         for i, nudge in enumerate(nudges[::-1]):
             if not nudge==0:
-                for variable, effect in self.profiles[nudge].items():
+                for variable, effect in self.nudge_uat[nudge].items():
                     if effect.lag > i:
                         if variable in updated_variables:
                             updated_variables[variable] += effect.effect[i]
@@ -117,8 +164,32 @@ class EffectProfile(BaseModel):
                             updated_variables[variable] = effect.effect[i]
         
         for variable, increment in updated_variables.items():
-            state[variable].update(increment)
-
+            state[variable].update(increment*inertia)
+    
+    def update_bp(self, uats: List[Dict[VariableName, Variable]], bps: Dict[VariableName, Variable], physiological_response: float):
+        updated_variables : Dict[VariableName, float] = {}
+        uat_array = np.zeros((self.max_lag_uat_bp* len(uats[0])))
+        for idx, uat in enumerate(uats[-1:-self.max_lag_uat_bp:-1]):
+            start_ind = idx*len(uat)
+            for idx2, key in enumerate(uat):
+                uat_array[start_ind+idx2] =  uat[key].value - uat[key].healthy_baseline
+        increments = physiological_response* (self.uat_bps_array @ uat_array)
+        assert len(increments.shape)==1 and increments.shape[0]==len(bps) 
+        for idx, key in enumerate(bps):
+            bps[key].update(increments[idx])
+        
+    def ret_effect_profile(self):
+        ret_profile = []
+        for nudge, cause_effect in self.nudge_uat.items():
+            for variable, effect in cause_effect.items():
+                for idx,curve_val in enumerate(list(effect.effect)):
+                    ret_profile.append({"time": idx, "cause": nudge, "effect_on": str(variable), "effect": curve_val})
+        for uat,v in self.uat_bps.items():
+            for bp, effect in v.items():
+                for idx, curve_val in enumerate(list(effect.effect)):
+                    ret_profile.append({"time": idx, "cause": uat, "effect_on": str(bp), "effect": curve_val})
+        return pd.DataFrame(ret_profile)
+    
 class NudgeGeneratorSpec(BaseModel):
     num_actions: int
     init_period: int
@@ -139,34 +210,61 @@ class NudgeGeneratorSpec(BaseModel):
         return ret_nudges
       
 class Person:
-    def __init__(self, variable_specs: List[VariableSpec], nudge_spec: NudgeGeneratorSpec,
-                cause_effect: EffectProfile, user_id: int):
+    def __init__(self,  user_id: int, variable_specs: List[VariableSpec], 
+                nudge_spec: NudgeGeneratorSpec,cause_effect: EffectProfile, 
+                physiological_response: VariableSpec, inertia: VariableSpec, final_output_spec: List[VariableSpec]):
         self.variables : Dict[VariableName,Variable] = \
             {spec.name: Variable(spec) for spec in variable_specs}
         self.gen_data: List[Dict[VariableName, float]] = [] 
         self.nudges = nudge_spec.get_nudge_perm()
         self.cause_effect = cause_effect
         self.user_id = user_id
+        self.physiological_response = physiological_response.sample()
+        self.inertia = inertia.sample()
+        self.final_outputs : Dict[VariableName, Variable] = \
+            {spec.name: Variable(spec) for spec in final_output_spec}
 
     def observe_variables(self):
-        return {str(k): v.observe() for k,v in self.variables.items()}
-
+        output1 =  {str(k): v.observe() for k,v in self.variables.items()}
+        output1.update({(str(k)+"_noiseless"): v.value for k, v in self.variables.items()})
+        output2 =  {str(k): v.observe() for k,v in self.final_outputs.items()}
+        output2.update({(str(k)+"_noiseless"): v.value for k, v in self.final_outputs.items()})
+        return output1, output2
+    
     def gen(self):
         i = 0
+        init_state = {str(k): v.value for k, v in self.variables.items()}
+        uat_data = []
+        bp_data = []
+        past_uat= []
+        past_bp = []
         while self.nudges[i]==0:
-            self.gen_data.append(self.observe_variables())
+            uat, bp = self.observe_variables()
+            past_uat.append(self.variables)
+            uat_data.append(uat)
+            bp_data.append(bp)
             i += 1
         
         while i<len(self.nudges):
-            self.cause_effect.update_state(self.nudges[:(i+1)], self.variables)
-            self.gen_data.append(self.observe_variables())
+            self.cause_effect.update_uat(self.nudges[:(i+1)], self.variables, self.inertia)
+            past_uat.append(self.variables)
+            self.cause_effect.update_bp(past_uat, self.final_outputs, self.physiological_response)
+            uat, bp = self.observe_variables()
+            uat_data.append(uat)
+            bp_data.append(bp)
             i += 1
         
 
-        ret_df = pd.DataFrame(self.gen_data)
+        for idx, d in enumerate(uat_data):
+            d.update(bp_data[idx])
+        ret_df = pd.DataFrame(uat_data)
         ret_df["nudge"] = self.nudges
         ret_df["time"] = np.array(list(range(ret_df.shape[0])))
         ret_df["user_id"] = self.user_id
+        for k, v in init_state.items():
+            ret_df["init_state_"+k] = v
+        ret_df["physiological_response"] = self.physiological_response
+        ret_df["inertia"] = self.inertia
         return ret_df
 
 
@@ -175,18 +273,24 @@ class Main(BaseModel):
     population_size: int
     nudge_spec: NudgeGeneratorSpec
     cause_effect: EffectProfile
+    physiological_response: VariableSpec
+    inertia : VariableSpec
+    final_output_specs: List[VariableSpec]
     def generate_data(self):
-        self.cause_effect.init_effect_profile()
-        people = [Person(self.variable_specs, self.nudge_spec, self.cause_effect, user_id) \
+        self.cause_effect.init_effect_profile(self.variable_specs, self.final_output_specs)
+        people = [Person(user_id, self.variable_specs, self.nudge_spec, self.cause_effect,
+                        self.physiological_response, self.inertia, self.final_output_specs) \
                      for user_id in range(self.population_size)]
         
-        return pd.concat([person.gen() for person in people])
+        return pd.concat([person.gen() for person in people]), self.cause_effect.ret_effect_profile()
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', required=True)
-    parser.add_argument('--output_path', required=True)
+    parser.add_argument('--config_path', default="config.json")
+    parser.add_argument('--output_folder', required=True)
     args = parser.parse_args()
     r = parse_file_as(Main, args.config_path)
-    t = r.generate_data()
-    t.to_csv(args.output_path)
+    os.makedirs(args.output_folder, exist_ok=False)
+    user_data, effect_profile = r.generate_data()
+    user_data.to_csv(os.path.join(args.output_folder, "data.csv"))
+    effect_profile.to_csv(os.path.join(args.output_folder, "effect_profile.csv"))
