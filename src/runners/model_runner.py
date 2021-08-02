@@ -15,6 +15,12 @@ from utils.eda import visualize
 from publishers.mlflow_logging import log_to_mlflow
 
 class Runner(BaseModel):
+    """
+    Basic runner code, needs to be improved. Currently performs training for a time series model given data
+    Args:
+    training - Mode that defines whether the model is to be trained or a model needs to be loaded for prediction
+    dataset_spec - 
+    """
     training: bool = True
     dataset_spec: TimeSeriesDataSpec
     presplit: bool = False
@@ -28,6 +34,10 @@ class Runner(BaseModel):
     eval_config: Optional[TimeSeriesEvaluationConfig] = None
     predict_config: Optional[TimeSeriesPredictionConfig] = None
     model_checkpoint: Optional[str]
+    experiment_name: Optional[str] = "Default"
+    run_name: Optional[str] = None
+    tags : Optional[Dict[str, str]] = None
+    train_output : Optional[str] = None
 
     def _validate(self):
         assert(self.presplit == (self.split_percentages==None))
@@ -52,11 +62,8 @@ class Runner(BaseModel):
 
             
     def run(self):
-        #TODO: Training, eval, test splitting? 
-        #group by id and assign different IDs for train,eval and test.
         self._validate()
         if self.training:
-            ## Splitting into train-val-test
             if not self.presplit:
                 full_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
                 train_dataset, val_dataset, test_dataset= \
@@ -69,9 +76,11 @@ class Runner(BaseModel):
                 self.dataset_spec.data_source = self.test_path
                 test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
             model = get_model(self.training_config)(train_dataset.dataset_spec)
-            model.set_params(self.training_config.model_parameters)
-            history = model.simple_fit(train_dataset, val_dataset, self.training_config)
+            history = model.simple_fit(train_dataset, val_dataset, self.training_config, self.training_config.model_parameters)
             artifacts = {}
+            if self.train_output:
+                model.simple_predict(train_dataset, self.training_config).data.to_csv(self.train_output)
+                artifacts["train_output"]= self.train_output
             model.save_model(self.training_config.model_save_folder)
             artifacts["model_path"] = self.training_config.model_save_folder
             if self.test_output:
@@ -79,7 +88,9 @@ class Runner(BaseModel):
                 prediction.data.to_csv(self.test_output)
                 artifacts["test_output"] = self.test_output
             eval_results = model.simple_evaluate(test_dataset, self.predict_config)
-            log_to_mlflow(self.dict(), history.history|eval_results, artifacts)
+            log_to_mlflow(self.dict(), history.history|eval_results, artifacts, 
+                        experiment_name=self.experiment_name,
+                        run_name=self.run_name, tags=self.tags)
         else:
             self.dataset_spec.data_source = self.test_path
             test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)

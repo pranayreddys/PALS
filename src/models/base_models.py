@@ -8,6 +8,11 @@ import os
 import random
 import abc
 
+"""
+In this file, the BaseTimeSeriesModel is the only model that has been tested. Also implemented TabularModel,
+but it has never been tested so might be prone to bugs.
+"""
+
 class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
     """
     This abstract class is the parent class for all time series models. The base class
@@ -41,7 +46,6 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         controls, states = inputs
         
         controls = tf.convert_to_tensor(controls) 
-        # Note that controls have the shape batch x (context_window + lead_gap + forecast_horizon) x control_feature_size
         
         states = tf.convert_to_tensor(states)
         # Note that state only has the shape batch x context_window x state_feature_size
@@ -49,7 +53,7 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         predictions = []
         for horizon_step in range(self.config.lead_gap + self.config.forecast_horizon):
             new_state = self._predict_one_step(states, 
-                                controls[horizon_step: self.config.context_window+1+horizon_step])
+                                controls[:, horizon_step: self.config.context_window+1+horizon_step])
             
             
             if horizon_step >= self.config.lead_gap: 
@@ -74,7 +78,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         into the respective components. The control and state horizons are of different length
         since control is under model control unlike state.
         """
-        dim_controls = len(self.dataspec.control_input_columns) if self.dataspec.control_input_columns else 1
+        dim_controls = len(self.dataspec.control_input_columns) + len(self.dataspec.series_attribute_columns) \
+                         if (len(self.dataspec.control_input_columns) + len(self.dataspec.series_attribute_columns))>0 else 1
         controls = timeseries[:, :, 0:dim_controls]
         states = timeseries[:,:,dim_controls:]
         return (controls, states[:,0:config.context_window]), \
@@ -108,7 +113,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         i = 0
         dataset_order = []
         for _, grouped_subset in ts_data.subset_per_id():
-            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns 
+                                        + self.dataspec.series_attribute_columns)
             state_subset = self._get_data(grouped_subset, self.dataspec.independent_state_columns
                                                 + self.dataspec.dependent_state_columns)
 
@@ -125,8 +131,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
     @staticmethod
     def _get_data(inputs, cols):
         """
-        If cols is left blank, returns a dummy array (useful when doing forecasting instead 
-        of control)
+        If cols is left blank, returns a dummy array (useful when some columns are not present, for
+        example control columns)
         """
         if not cols:
             return np.array(list(range(len(inputs)))).reshape(-1,1)
@@ -156,7 +162,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
 
     def simple_fit(self, train_data: TimeSeriesDataset, 
                         val_data: TimeSeriesDataset,
-                        train_config: TimeSeriesTrainingConfig):
+                        train_config: TimeSeriesTrainingConfig,
+                        model_params):
         """This fit is primarily a wrapper around the keras model compile and fit
         need to massage the dataset and config into appropriate form
         """
@@ -165,9 +172,11 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         train_data= self.preprocessor.simple_fit_predict(train_data)
         self._build_model(train_config)
         self.dataspec = train_data.dataset_spec
+        self.dataspec.control_input_columns.remove('nudge_0')
+        self.set_params(model_params)
         dataset = self._make_dataset(train_data, train_config)
         history = self.fit(dataset,  verbose=1,
-                        epochs=train_config.epochs, shuffle=False)
+                        epochs=train_config.epochs, shuffle=True)
         return history # Log data returned
 
     def save_model(self, model_save_folder):
@@ -206,7 +215,7 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
 
         per_series= {}
         for id, grouped_subset in ts_data.subset_per_id():
-            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns + self.dataspec.series_attribute_columns)
             state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
             state_subset = self._get_data(grouped_subset, state_columns)
             per_series[id]= self.evaluate(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), eval_config), return_dict=True)
@@ -214,52 +223,55 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         eval_results = {}
         for _id, eval_dict in per_series.items():
             for k,value in eval_dict.items():
-                eval_results[("eval_"+_id+"_"+k)] = value 
+                eval_results[("eval_"+str(_id)+"_"+str(k))] = value 
         return eval_results
 
-    def simple_predict(self, ts_data: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
+    def simple_predict(self, ts_data_orig: TimeSeriesDataset, predict_config: TimeSeriesPredictionConfig):
         """
         Returns a forecast_horizon x state vector for each prediction point. Data loading is performed
         similar to train.
         """
         self.config = predict_config
-        ts_data = self.preprocessor.simple_predict(ts_data)
+        ts_data = self.preprocessor.simple_predict(ts_data_orig)
         ret_ts_data = TimeSeriesDataset(ts_data.dataset_spec, blank_dataset=True)
         ret_ts_data.data = ts_data.data.copy()
         state_columns = self.dataspec.independent_state_columns + self.dataspec.dependent_state_columns
         predicted_columns = []
+        inversion_mapping = {}
         total_window_size= self.config.context_window + self.config.lead_gap + self.config.forecast_horizon
         for horizon_step in range(self.config.forecast_horizon):
             for state in state_columns:
                 predict_column_name = state+"_horizon_"+str(horizon_step+1)+"_predict"
                 predicted_columns.append(predict_column_name)
                 ret_ts_data.data[predict_column_name] = np.NaN
+                inversion_mapping[predict_column_name] = state 
         for key, grouped_subset in ret_ts_data.subset_per_id():
-            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns)
+            control_subset = self._get_data(grouped_subset, self.dataspec.control_input_columns + self.dataspec.series_attribute_columns)
             state_subset = self._get_data(grouped_subset, state_columns)
             predictions = self.predict(self._make_subset(np.concatenate((control_subset, state_subset), axis=1), predict_config)) # B x T x S
             predictions = predictions.reshape(predictions.shape[0], -1) # B x T x S -> B x (T*S)
             assert(predictions.shape[0]==(grouped_subset.shape[0]-total_window_size+1))
+            self.preprocessor.invert(predictions, predicted_columns, inversion_mapping)
             predictions_corrected_shape = np.full((grouped_subset.shape[0],predictions.shape[1]),np.NaN)
             predictions_corrected_shape[:predictions.shape[0], :] = predictions
-            ret_ts_data.assign_id_vals(key, predicted_columns, predictions_corrected_shape)
-        return ret_ts_data
+            ts_data_orig.assign_id_vals(key, predicted_columns, predictions_corrected_shape)
+        return ts_data_orig
 
 
     def simple_impute(self, ts_data: TimeSeriesDataset, impute_config: TimeSeriesImputationConfig):
-        # TODO: SKIP - not planning to implement unless we really need this
-        # We might prefer to use bidirectional models here 
+        """TODO: SKIP - not planning to implement unless we really need this
+        We might prefer to use bidirectional models here """
         return
 
     def simple_detect_outliers(self, ts_data: TimeSeriesDataset, outlier_config: TimeSeriesOutlierDetectionConfig):
-        # TODO: SKIP - not planning to implement unless we really need this
-        # We might prefer to use bidirectional models here as well
+        """TODO: SKIP - not planning to implement unless we really need this
+        We might prefer to use bidirectional models here as well"""
         return
     
     @abc.abstractmethod
     def set_params(self, params):
         """
-        Model specific parameters
+        Abstract method used to specify model specific parameters
         """
         pass
     
@@ -293,12 +305,12 @@ class BaseTransformationModel(tf.keras.Model, abc.ABC):
 
     @abc.abstractmethod
     def _predict(self, independent_vals, dependent_vals):
-        # TODO: This is the main function to be implemented by the derived classes
-        # inputs are tensors and output is a tensor
-        # but internally we can convert the input tensors to pandas or whatever form is convenient
-        # and do the computation with pandas and convert output back to tensor
-        # if we are using keras models, then keeping it as tensors is simpler
-        # alternate option insteaf of NotImplementedError is to use abstract methods
+        """This is the main function to be implemented by the derived classes
+        inputs are tensors and output is a tensor
+        but internally we can convert the input tensors to pandas or whatever form is convenient
+        and do the computation with pandas and convert output back to tensor
+        if we are using keras models, then keeping it as tensors is simpler
+        alternate option insteaf of NotImplementedError is to use abstract methods"""
         pass
 
     def simple_fit(self, tb_data: TabularDataset, train_config: TabularTrainingConfig):

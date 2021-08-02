@@ -6,19 +6,21 @@ from itertools import chain
 from entities.all_enums import ExperimentMode
 from typing import List
 class TabularDataset:
+    """
+    Tabular Dataset class for interfacing with TabularData such as user profile params,
+    for example personality type/motivation.
+    TODO: This module has not been tested yet.
+    """
     def __init__(self, _dataset_spec: TabularDataSpec, blank_dataset=False):
-        #TODO
-        # read the dataset from data source
-        # self.data
-        # set the schema
         self.dataset_spec =  _dataset_spec
         if not blank_dataset:
             self.data = read_data(dataset_spec.data_source, self.dataset_spec.data_format)
             self._validate()
-        # validate data with the schema 
 
     def _validate(self):
-        #FIXME: If more validation required
+        """
+        Currently performs very basic validation, just checks to see if columns exist
+        """
         columns = set(self.data.columns)
         assert(set(self.dataset_spec.instance_id_columns).issubset(columns))
         assert(set(self.dataset_spec.dependent_columns).issubset(columns))
@@ -37,29 +39,25 @@ class TabularDataset:
             #pairwise correlations
          return
     def select_subset(self, row_selection_query, column_selection_query):
-        # TODO: use the selection_query to get a subset of rows and a list of columns
         return self.data.loc[row_selection_query, column_selection_query]
 
 class TimeSeriesDataset:
     def __init__(self, _dataset_spec: TimeSeriesDataSpec, blank_dataset=False):
-        #TODO
-        # read the dataset from data source
-        # self.data 
-        # set the schema
+        """
+        TimeSeriesDataset class for interfacing with TimeSeriesData such as BP/UAT time series.
+        """
         self.dataset_spec =  _dataset_spec
         self.data = pd.DataFrame()
         if not blank_dataset:
             self.data = read_data(_dataset_spec.data_source, _dataset_spec.data_format)
             self._validate()
             self._sort_values()
-        # validate data with the schema 
 
     def _check_existence(self, col_list):
         columns = set(self.data.columns)
         assert(set(col_list).issubset(columns))
 
     def _validate(self):
-        #TODO
         columns = set(self.data.columns)
         self._check_existence(self.dataset_spec.independent_state_columns)
         self._check_existence(self.dataset_spec.control_input_columns)
@@ -79,17 +77,18 @@ class TimeSeriesDataset:
          return self.data.describe()
 
     def detailed_report(self, report_path: str):
-         # TODO - LATER --statsmodels - we can use Sharut's code
-           # individual column - availability, distribution
-         # plot original data, rolling mean and variance for day, week of each series x id (e.g., person's BP)
-         # plot auto-correlation
-         # run ADF-stationarity test, time series decomposition for each series x id
-         # plot mean and variance across series ids for each series; ADF stationarity test at population level  
-         # cross-correlations across different series
-         return
+        """
+        TODO: Refer Sharut's code and plot:
+        a) individual column - availability, distribution
+        b) plot original data, rolling mean and variance for day, week of each series x id (e.g., person's BP)
+        c) plot auto-correlation
+        d) run ADF-stationarity test, time series decomposition for each series x id
+        e) plot mean and variance across series ids for each series; ADF stationarity test at population level  
+        f) cross-correlations across different series
+        """   
+        return
     
     def select_subset(self, row_selection_query, column_selection_query):
-        # TODO: use the selection_query to get a subset of rows and a list of columns
         return self.data.loc[row_selection_query, column_selection_query]
     
     def subset_per_id(self):
@@ -107,6 +106,9 @@ class TimeSeriesDataset:
     def train_val_test_split(self, split_percentages: List[float], 
                         experiment_mode: ExperimentMode,
                         trainingconfig = None):
+        """
+        Helper function for creating train-val-test split.
+        """
         train_dataset = TimeSeriesDataset(self.dataset_spec, blank_dataset=True)
         val_dataset= TimeSeriesDataset(self.dataset_spec, blank_dataset=True)
         test_dataset = TimeSeriesDataset(self.dataset_spec, blank_dataset=True)

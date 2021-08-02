@@ -3,7 +3,10 @@ from entities.key_entities import TimeSeriesDataSpec
 from models.base_models import BaseTimeSeriesModel
 import enum
 
-
+"""
+Refer folder simple_data_generation. Decided not to incorporate data generation for now
+in the overall code structure, but some of the functions are implemented in simple_data_generation 
+"""
 @enum.unique
 class Combination(str, enum.Enum):
     ADDITIVE = "additive"

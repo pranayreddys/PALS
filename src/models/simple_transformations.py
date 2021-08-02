@@ -5,11 +5,16 @@ import pandas as pd
 import enum
 from dateutil import parser
 from entities.all_enums import ColumnTransform
-from typing import Union, Dict
+from typing import Union, Dict, List
 import pickle
 import os
 
 class SimplePreprocessModel():
+    """
+    Performs simple transformations such as one hot encodings and other sklearn transforms including
+    MinMaxScaling, StandardScaling etc.
+    This class is utilized in base models as one of the sub components. 
+    """
     def __init__(self, column_transformations: Dict[str, ColumnTransform] = None):
         self.column_transformations = column_transformations
         self.new_col_dict = {}
@@ -42,7 +47,7 @@ class SimplePreprocessModel():
         
         for col, transform in self.column_transformations.items():
             if transform == ColumnTransform.OneHotEncoder:
-                one_hot_encodings = pd.get_dummies(dataset.data[col])
+                one_hot_encodings = pd.get_dummies(dataset.data[col]).astype('float')
                 newcolumns = [col+"_"+str(onehotcol) for onehotcol in one_hot_encodings.columns]
                 ret_dataset.data[newcolumns] = one_hot_encodings 
                 if training:
@@ -71,6 +76,14 @@ class SimplePreprocessModel():
             self._transformer, self.new_col_dict, self.column_transformations, self.dataspec = pickle.load(f)
         
         return self.dataspec
+    
+    def invert(self, predictions, predicted_columns: List[str], mapping: Dict[str, str]):
+        for i,col in enumerate(predicted_columns):
+            if self.column_transformations[mapping[col]] not in [ColumnTransform.DateTime, ColumnTransform.Identity, ColumnTransform.OneHotEncoder]:
+                predictions[:, i] = self._transformer[mapping[col]].inverse_transform(predictions[:, i])
+        
+        return predictions
+
 
 
 # class SimpleTransformationsModel(BaseTransformationModel):

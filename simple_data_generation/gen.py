@@ -16,23 +16,27 @@ import os
 
 random.seed(0)
 np.random.seed(0)
+
+# Assumptions Nudge[t] -> UAT[t] -> BP[t]
 @enum.unique
 class VariableName(str, enum.Enum):
-    sleep = 'sleep'
-    salt = 'salt'
+    sleep_duration = 'sleep_duration'
+    salt_intake = 'salt_intake'
     inertia = 'inertia'
     physiological_response = 'physiological_response'
     dbp = 'dbp'
     sbp = 'sbp'
+    step_count = 'step_count'
 
 @enum.unique
 class DistributionType(str, enum.Enum):
-	normal = 'normal'
-	bernoulli = 'bernoulli'
-	beta = 'beta'
-	gamma = 'gamma'
-	binomial = 'binomial'
-	multinomial = 'multinomial'
+    normal = 'normal'
+    bernoulli = 'bernoulli'
+    beta = 'beta'
+    gamma = 'gamma'
+    binomial = 'binomial'
+    multinomial = 'multinomial'
+    uniform = 'uniform'
 
 @enum.unique
 class CurveType(str, enum.Enum):
@@ -40,7 +44,7 @@ class CurveType(str, enum.Enum):
 
 class VariableSpec(BaseModel):
     """
-    This class describes configuration parameters required for UAT/BP generation. Key points:
+    This class describes configuration parameters required for UAT/BP generation. Key params:
     name: a string of type VariableName (which is an enum)
     init_distribution_type: Specifies the population-level distribution that a person's baseline numbers
     need to be sampled from
@@ -48,7 +52,7 @@ class VariableSpec(BaseModel):
     min_bound: The minimum possible value that can be taken by this variable
     max_bound: The maximum possible value that can be taken by this variable
     healthy_baseline: This is compulsory for UAT variables and optional otherwise. For UAT variables,
-    this number is required for computing delayed effect of changes in UAT w.r.t BP (Refer: Delayed Effect Model)
+    this number is required for computing delayed effect of changes in UAT w.r.t BP.
     observation_noise_type: Note that even though a person has a certain UAT (e.g. 2000 steps),
     there could be day-to-day fluctuations through measurement noise and simple fluctuations in the person's behavior
     which cannot be predicted. This variable captures that distribution type.
@@ -134,6 +138,9 @@ class EffectProfile(BaseModel):
     max_lag_nudge_uat: Optional[int] = 0 #HACK, Internal Parameter
     max_lag_uat_bp: Optional[int] = 0 #HACK, Internal Parameter
     uat_bps_array: Optional[str] = None #HACK, This is an internal numpy array param
+    variable_specs: Optional[str] = None #HACK, This is an internal list of variablespec
+    final_output_specs: Optional[str] = None #HACK, This is an internal list of variablespec
+
 
     def init_effect_profile(self, variable_specs: List[VariableSpec], final_output_specs: List[VariableSpec]):
         for v in self.nudge_uat.values():
@@ -145,6 +152,8 @@ class EffectProfile(BaseModel):
                 self.max_lag_uat_bp = max(self.max_lag_uat_bp, e.lag)
         
         # (UAT * lag uncoiled needs to be multiplied by final x (UAT * lag) 
+        self.variable_specs = variable_specs
+        self.final_output_specs = final_output_specs
         self.uat_bps_array = np.zeros((len(final_output_specs), len(variable_specs)*self.max_lag_uat_bp))
         for i,output_spec in enumerate(final_output_specs):
             for j,var_spec in enumerate(variable_specs): 
@@ -169,14 +178,14 @@ class EffectProfile(BaseModel):
     def update_bp(self, uats: List[Dict[VariableName, Variable]], bps: Dict[VariableName, Variable], physiological_response: float):
         updated_variables : Dict[VariableName, float] = {}
         uat_array = np.zeros((self.max_lag_uat_bp* len(uats[0])))
-        for idx, uat in enumerate(uats[-1:-self.max_lag_uat_bp:-1]):
+        for idx, uat in enumerate(uats[-1:-(self.max_lag_uat_bp+1):-1]):
             start_ind = idx*len(uat)
-            for idx2, key in enumerate(uat):
-                uat_array[start_ind+idx2] =  uat[key].value - uat[key].healthy_baseline
-        increments = physiological_response* (self.uat_bps_array @ uat_array)
+            for idx2, spec in enumerate(self.variable_specs):
+                uat_array[start_ind+idx2] =  uat[spec.name].value - uat[spec.name].healthy_baseline
+        increments = physiological_response*(self.uat_bps_array @ uat_array)
         assert len(increments.shape)==1 and increments.shape[0]==len(bps) 
-        for idx, key in enumerate(bps):
-            bps[key].update(increments[idx])
+        for idx, spec in enumerate(self.final_output_specs):
+            bps[spec.name].update(increments[idx])
         
     def ret_effect_profile(self):
         ret_profile = []
@@ -287,7 +296,7 @@ class Main(BaseModel):
 if __name__== "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default="config.json")
-    parser.add_argument('--output_folder', required=True)
+    parser.add_argument('--output_folder', default="o_test")
     args = parser.parse_args()
     r = parse_file_as(Main, args.config_path)
     os.makedirs(args.output_folder, exist_ok=False)

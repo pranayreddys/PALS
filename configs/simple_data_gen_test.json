@@ -1,0 +1,38 @@
+{
+    "presplit": false,
+    "split_percentages": [0.6, 0.2, 0.2],
+    "dataset_spec":{
+        "data_source": "simple_data_generation/o/data.csv",
+        "data_format": "csv",
+        "time_column": "time",
+        "series_id_column": "user_id",
+        "series_attribute_columns": [],
+        "control_input_columns": ["nudge"],
+        "dependent_state_columns": [],
+        "independent_state_columns": ["VariableName.salt_intake", "VariableName.step_count", "VariableName.sleep_duration"]
+    },
+    "training_config":{
+        "model_save_folder": "logs/simple_experiment1",
+        "column_transformations":{
+            "VariableName.salt_intake": "StandardScaler",
+            "VariableName.step_count": "StandardScaler",
+            "VariableName.sleep_duration": "StandardScaler",
+            "nudge": "OneHotEncoder"
+        },
+        "model_class": "SimpleVAR",
+        "model_parameters": {},
+        "context_window": 7,
+        "lead_gap":0,
+        "forecast_horizon":1,
+        "metrics": ["MeanSquaredError", "MeanSquaredLogarithmicError"],
+        "optimizer": {
+            "optimizer_type": "Adam"
+        },
+        "train_loss_function":{
+            "loss_type": "MeanAbsoluteError"
+        },
+        "epochs": 10,
+        "batchsize": 256
+    },
+    "test_output": "simple_data_generation/o/output.csv" 
+}

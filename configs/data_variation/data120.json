@@ -1,0 +1,39 @@
+{
+    "presplit": false,
+    "split_percentages": [0.6, 0.3, 0.1],
+    "dataset_spec":{
+        "data_source": "simple_data_generation/o200/data.csv",
+        "data_format": "csv",
+        "time_column": "time",
+        "series_id_column": "user_id",
+        "series_attribute_columns": [],
+        "control_input_columns": ["nudge"],
+        "dependent_state_columns": [],
+        "independent_state_columns": ["VariableName.salt_intake"]
+    },
+    "training_config":{
+        "model_save_folder": "logs/simple_experiment_data_change",
+        "column_transformations":{
+            "nudge": "OneHotEncoder",
+            "VariableName.salt_intake": "StandardScaler"
+        },
+        "model_class": "SimpleVAR",
+        "model_parameters": {},
+        "context_window": 8,
+        "lead_gap":0,
+        "forecast_horizon":1,
+        "metrics": ["MeanSquaredError", "MeanSquaredLogarithmicError", "MeanAbsoluteError"],
+        "optimizer": {
+            "optimizer_type": "Adam"
+        },
+        "train_loss_function":{
+            "loss_type": "MeanAbsoluteError"
+        },
+        "epochs": 10,
+        "batchsize": 256
+    },
+    "train_output": "misc/horizons/train_output_mae_1_context_8_data120.csv", 
+    "test_output": "misc/horizons/output_mae_1_context_8_data120.csv", 
+    "experiment_name": "loss_mae_model_SimpleVar_variable_salt_varyingdata",
+    "run_name": "120"
+}

@@ -30,6 +30,11 @@ def log_to_mlflow(params, metrics, artifact_dict, tags=None, experiment_name="De
         artifact_dict = artifact_dict.dict()
 
     params = flatten(params)
+    t = list(params.keys())
+    for key in t:
+        if ":" in key:
+            params[key.replace(":", "_")] = params.pop(key)
+    
     metrics = flatten(metrics)
     artifact_dict = flatten(artifact_dict)
 
