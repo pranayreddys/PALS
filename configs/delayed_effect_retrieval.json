@@ -9,17 +9,12 @@
         "series_attribute_columns": [],
         "control_input_columns": ["nudge"],
         "dependent_state_columns": [],
-        "independent_state_columns": ["VariableName.salt_intake"]
+        "independent_state_columns": ["VariableName.step_count"]
     },
     "training_config":{
         "model_save_folder": "logs/simple_experiment1",
         "column_transformations":{
-            "nudge": "OneHotEncoder",
-            "VariableName.salt_intake": "StandardScaler",
-            "VariableName.step_count": "StandardScaler",
-            "VariableName.sleep_duration": "StandardScaler",
-            "VariableName.sbp": "StandardScaler",
-            "VariableName.dbp": "StandardScaler"
+            "nudge": "OneHotEncoder"
         },
         "model_class": "DelayedEffectModel",
         "model_parameters": {},
@@ -28,15 +23,16 @@
         "forecast_horizon":1,
         "metrics": ["MeanAbsoluteError", "MeanSquaredError", "MeanSquaredLogarithmicError"],
         "optimizer": {
-            "optimizer_type": "Adam"
+            "optimizer_type": "Adam",
+            "learning_rate": 10
         },
         "train_loss_function":{
             "loss_type": "MeanSquaredError"
         },
-        "epochs": 30,
+        "epochs": 20,
         "batchsize": 256
     },
-    "test_output": "misc/output_mae_reducedlr_salt.csv",
-    "experiment_name": "context_6_loss_mae_reducedlr_salt",
-    "train_output": "misc/train_output_mae_reducedlr_salt.csv"
+    "test_output": "misc/output_mse_reducedlr_step_count.csv",
+    "experiment_name": "context_6_loss_mse_reducedlr_step_count",
+    "train_output": "misc/train_output_mse_reducedlr_step_count.csv"
 }

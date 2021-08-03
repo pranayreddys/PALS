@@ -53,6 +53,7 @@ class ModelClass(str, enum.Enum):
 	SimpleVAR = "SimpleVAR"
 	UatVAR = "UatVAR"
 	UatBpVAR = "UatBpVAR"
+	DelayedEffectModel = "DelayedEffectModel"
 
 
 @enum.unique
