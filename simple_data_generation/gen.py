@@ -249,14 +249,14 @@ class Person:
         past_bp = []
         while self.nudges[i]==0:
             uat, bp = self.observe_variables()
-            past_uat.append(self.variables)
+            past_uat.append(deepcopy(self.variables))
             uat_data.append(uat)
             bp_data.append(bp)
             i += 1
         
         while i<len(self.nudges):
             self.cause_effect.update_uat(self.nudges[:(i+1)], self.variables, self.inertia)
-            past_uat.append(self.variables)
+            past_uat.append(deepcopy(self.variables))
             self.cause_effect.update_bp(past_uat, self.final_outputs, self.physiological_response)
             uat, bp = self.observe_variables()
             uat_data.append(uat)
@@ -296,7 +296,7 @@ class Main(BaseModel):
 if __name__== "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default="config.json")
-    parser.add_argument('--output_folder', default="o_test")
+    parser.add_argument('--output_folder', default="o_new")
     args = parser.parse_args()
     r = parse_file_as(Main, args.config_path)
     os.makedirs(args.output_folder, exist_ok=False)
