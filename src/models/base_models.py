@@ -269,6 +269,10 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         return
     
     @abc.abstractmethod
+    def visualize(self, folder_path: str):
+        pass
+    
+    @abc.abstractmethod
     def set_params(self, params):
         """
         Abstract method used to specify model specific parameters

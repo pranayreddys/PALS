@@ -173,7 +173,7 @@ class EffectProfile(BaseModel):
                             updated_variables[variable] = effect.effect[i]
         
         for variable, increment in updated_variables.items():
-            state[variable].update(increment*inertia)
+            state[variable].update(increment)
     
     def update_bp(self, uats: List[Dict[VariableName, Variable]], bps: Dict[VariableName, Variable], physiological_response: float):
         updated_variables : Dict[VariableName, float] = {}
@@ -182,7 +182,7 @@ class EffectProfile(BaseModel):
             start_ind = idx*len(uat)
             for idx2, spec in enumerate(self.variable_specs):
                 uat_array[start_ind+idx2] =  uat[spec.name].value - uat[spec.name].healthy_baseline
-        increments = physiological_response*(self.uat_bps_array @ uat_array)
+        increments = (self.uat_bps_array @ uat_array)
         assert len(increments.shape)==1 and increments.shape[0]==len(bps) 
         for idx, spec in enumerate(self.final_output_specs):
             bps[spec.name].update(increments[idx])
@@ -295,8 +295,8 @@ class Main(BaseModel):
 
 if __name__== "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default="config.json")
-    parser.add_argument('--output_folder', default="o_new")
+    parser.add_argument('--config_path', default="scaled_config.json")
+    parser.add_argument('--output_folder', default="tp")
     args = parser.parse_args()
     r = parse_file_as(Main, args.config_path)
     os.makedirs(args.output_folder, exist_ok=False)

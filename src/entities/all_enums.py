@@ -54,6 +54,7 @@ class ModelClass(str, enum.Enum):
 	UatVAR = "UatVAR"
 	UatBpVAR = "UatBpVAR"
 	DelayedEffectModel = "DelayedEffectModel"
+	BpDelayedEffectModel = 'BpDelayedEffectModel'
 
 
 @enum.unique

@@ -82,6 +82,7 @@ class Runner(BaseModel):
                 model.simple_predict(train_dataset, self.training_config).data.to_csv(self.train_output)
                 artifacts["train_output"]= self.train_output
             model.save_model(self.training_config.model_save_folder)
+            model.visualize(self.training_config.model_save_folder)
             artifacts["model_path"] = self.training_config.model_save_folder
             if self.test_output:
                 prediction = model.simple_predict(test_dataset, self.predict_config)
@@ -97,6 +98,7 @@ class Runner(BaseModel):
             model = get_model(self.training_config)(self.dataset_spec)
             model.set_params(self.training_config.model_parameters)
             model.load_model(self.training_config.model_save_folder, self.training_config)
+            model.visualize(self.training_config.model_save_folder)
             artifacts = {}
             if self.test_output:
                 prediction = model.simple_predict(test_dataset, self.predict_config)
