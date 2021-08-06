@@ -3,7 +3,6 @@ from typing import Optional, Dict, List
 from entities.key_entities import TimeSeriesDataSpec, TabularDataSpec
 from entities.all_enums import OptimizerType, LossMetric, DistributionType, ModelClass, ColumnTransform
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 
 class TimeSeriesBaseConfig(BaseModel):
