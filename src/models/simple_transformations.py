@@ -1,5 +1,5 @@
 from dataset.dataset import TabularDataset, TimeSeriesDataset
-from models.base_models import BaseTransformationModel
+# from models.base_models import BaseTransformationModel
 from sklearn import preprocessing
 import pandas as pd
 import enum
@@ -60,9 +60,11 @@ class SimplePreprocessModel():
                 ret_dataset.dataset_spec.replace(col, newcolumns)
                 
             elif transform == ColumnTransform.DateTime:
-                ret_dataset.data[col] = pd.to_datetime(dataset.data[col])
+                if col in dataset.data:
+                    ret_dataset.data[col] = pd.to_datetime(dataset.data[col])
             elif transform == ColumnTransform.Identity:
-                ret_dataset.data[col] = dataset.data[col]
+                if col in dataset.data:
+                    ret_dataset.data[col] = dataset.data[col]
             else:
                 ret_dataset.data[col] = self._transformer[col].transform(dataset.data[col].values.reshape(-1,1)).squeeze()
         return ret_dataset

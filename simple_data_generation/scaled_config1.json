@@ -1,0 +1,86 @@
+{
+    "variable_specs": [
+        {
+            "name": "sleep_duration",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 1.0
+            },
+            "min_bound": -3.0,
+            "max_bound" :  3.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.005
+            },
+            "healthy_baseline": 0.1
+        }
+    ],
+    "final_output_specs": [
+        {
+            "name": "sbp",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 0.8
+            },
+            "min_bound": -7.0,
+            "max_bound" :  7.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.002
+            }
+        }  
+    ],
+    "population_size": 200,
+    "nudge_spec": {
+        "num_actions": 1,
+        "init_period": 14,
+        "cycle_period": 7,
+        "washout_period": 7
+    },
+    "cause_effect": {
+        "nudge_uat":
+            {"1" : {
+                "sleep_duration":{
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.3,
+                    "return_to_mean": true
+                }
+            }
+        },
+        "uat_bps":{
+            "sleep_duration":{
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.4,
+                    "negative": true
+                }
+            } 
+        }
+    },
+    "physiological_response": {
+        "name": "physiological_response",
+        "init_distribution_type": "uniform",
+        "init_params": {
+            "low": 0.8,
+            "high": 0.81
+        },
+        "min_bound": 0,
+        "max_bound": 1
+    },
+    "inertia": {
+        "name": "inertia",
+        "init_distribution_type": "uniform",
+        "init_params": {
+            "low": 0.6,
+            "high": 0.61
+        },
+        "min_bound": 0,
+        "max_bound": 1
+    }
+}

@@ -9,7 +9,7 @@ from utils.read_write_utils import is_file
 from models.simple_transformations import SimplePreprocessModel
 from models.models import SimpleVAR
 from entities.all_enums import ExperimentMode
-from models.models import get_model
+from models.models import get_forecasting_model
 import tabulate
 from utils.eda import visualize
 from publishers.mlflow_logging import log_to_mlflow
@@ -18,8 +18,22 @@ class Runner(BaseModel):
     """
     Basic runner code, needs to be improved. Currently performs training for a time series model given data
     Args:
-    training - Mode that defines whether the model is to be trained or a model needs to be loaded for prediction
-    dataset_spec - 
+        training : Mode that defines whether the model is to be trained or a model needs to be loaded for prediction
+        dataset_spec : Spec such as Time Column, Series Attribute columns etc. Refer :class:`~src.entities.key_entitites.TimeSeriesDataSpec`
+        presplit : If False, splits dataset according to mode. If True, need to provide train_path, val_path and test_path for train, val,test splits.
+        mode : Refer :class:`~src.entities.all_enums.ExperimentMode` for possible modes and meaning. The splitting logic is implemented in :func:`~src.dataset.dataset.TimeSeriesDataset.train_val_test_split` for modes.
+        test_output: Dumps test output into a csv at this path
+        split_percentages: Used when presplit is False, then split_percentages need to be provided (list of 3 floats from 0 to 1 representing train, val, test)
+        train_path : Used when presplit is False 
+        val_path : Used when presplit is False
+        test_path : Used when presplit is False
+        training_config : Has configuration params such as context_window, forecast horizon. Needs to be provided for both model loading (same config used during training) and for training purposes
+        eval_config : Not implemented yet, but might be useful for other forms of evaluation.
+        predict_config : Used during prediction. If this is not provided then prediction_config params would default to training_config params
+        experiment_name : Name of experiment to be provided to mlflow
+        run_name : Name of run to be provided to mlflow
+        tags : Tags to be provided to mlflow
+        train_output : Optional, dump the predictions of train into this path (if present)
     """
     training: bool = True
     dataset_spec: TimeSeriesDataSpec
@@ -30,10 +44,9 @@ class Runner(BaseModel):
     train_path: Optional[str]
     val_path: Optional[str]
     test_path: Optional[str]
-    training_config: Optional[TimeSeriesTrainingConfig]
+    training_config: TimeSeriesTrainingConfig
     eval_config: Optional[TimeSeriesEvaluationConfig] = None
     predict_config: Optional[TimeSeriesPredictionConfig] = None
-    model_checkpoint: Optional[str]
     experiment_name: Optional[str] = "Default"
     run_name: Optional[str] = None
     tags : Optional[Dict[str, str]] = None
@@ -50,7 +63,7 @@ class Runner(BaseModel):
                 self.eval_config = self.training_config
             if not self.predict_config:
                 self.predict_config = self.training_config
-            assert(self.training_config.model_save_folder)
+            assert self.training_config.model_save_folder
         else:
             is_file(self.test_path)
             assert self.training_config
@@ -75,7 +88,7 @@ class Runner(BaseModel):
                 val_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
                 self.dataset_spec.data_source = self.test_path
                 test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
-            model = get_model(self.training_config)(train_dataset.dataset_spec)
+            model = get_forecasting_model(self.training_config.model_class)(train_dataset.dataset_spec)
             history = model.simple_fit(train_dataset, val_dataset, self.training_config, self.training_config.model_parameters)
             artifacts = {}
             if self.train_output:
@@ -95,9 +108,9 @@ class Runner(BaseModel):
         else:
             self.dataset_spec.data_source = self.test_path
             test_dataset = TimeSeriesDataset(_dataset_spec=self.dataset_spec)
-            model = get_model(self.training_config)(self.dataset_spec)
+            model = get_forecasting_model(self.training_config.model_class)(self.dataset_spec)
             model.set_params(self.training_config.model_parameters)
-            model.load_model(self.training_config.model_save_folder, self.training_config)
+            model.load_model(self.training_config.model_save_folder, self.training_config, test_dataset)
             model.visualize(self.training_config.model_save_folder)
             artifacts = {}
             if self.test_output:
@@ -106,5 +119,4 @@ class Runner(BaseModel):
                 artifacts["test_output"] = self.test_output
             
             eval_results = model.simple_evaluate(test_dataset, self.predict_config)
-            eval_results= {("eval_"+id+"_"+k):value for k,value in eval_dict.items() for id,eval_dict in eval_results}
             log_to_mlflow(self.dict(), eval_results, artifacts)

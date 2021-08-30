@@ -1,42 +1,37 @@
 {
-    "training": false,
-    "presplit": true,
-    "test_path": "simple_data_generation/o_scaled_wo_inertia/data.csv",
+    "presplit": false,
+    "split_percentages": [0.6, 0.2, 0.2],
     "dataset_spec":{
-        "data_source": "simple_data_generation/o_scaled_wo_inertia/data.csv",
+        "data_source": "simple_data_generation/3nudge_gen/data.csv",
         "data_format": "csv",
         "time_column": "time",
         "series_id_column": "user_id",
         "series_attribute_columns": [],
         "control_input_columns": ["nudge"],
-        "dependent_state_columns": ["VariableName.sbp", "VariableName.dbp"],
+        "dependent_state_columns": ["VariableName.sbp"],
         "independent_state_columns": ["VariableName.salt_intake", "VariableName.step_count", "VariableName.sleep_duration"]
     },
     "training_config":{
         "model_save_folder": "logs/simple_experiment1",
         "column_transformations":{
-            "nudge": "OneHotEncoder",
-            "VariableName.salt_intake": "StandardScaler",
-            "VariableName.sleep_duration": "StandardScaler",
-            "VariableName.step_count": "StandardScaler",
-            "VariableName.sbp": "StandardScaler",
-            "VariableName.dbp": "StandardScaler"
+            "nudge": "OneHotEncoder"
         },
         "model_class": "BpDelayedEffectModel",
         "model_parameters": {},
         "context_window": 6,
         "lead_gap":0,
-        "forecast_horizon":5,
+        "forecast_horizon":2,
         "metrics": ["MeanAbsoluteError", "MeanSquaredError", "MeanSquaredLogarithmicError"],
         "optimizer": {
             "optimizer_type": "Adam"
         },
         "train_loss_function":{
-            "loss_type": "MeanAbsoluteError",
-            "learning_rate": 0.001
+            "loss_type": "MeanAbsoluteError"
         },
         "epochs": 30,
         "batchsize": 256
     },
-    "test_output": "misc/loaded_model.csv"
+    "test_output": "misc/tp.csv",
+    "train_output": "misc/tp.csv",
+    "experiment_name": "tp"
 }

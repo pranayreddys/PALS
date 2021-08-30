@@ -7,7 +7,8 @@ import models.simple_transformations as simple_transform
 import os
 import random
 import abc
-
+import pandas as pd
+from typing import Tuple
 """
 In this file, the BaseTimeSeriesModel is the only model that has been tested. Also implemented TabularModel,
 but it has never been tested so might be prone to bugs.
@@ -30,6 +31,9 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         and so on, where C denotes control and S denotes state.
         Special care needs to be taken in indexing control, since C[0:1], S[0] will be used to predict S[1]
     3. There is a single unique ID column for each time series in the dataset
+    4. In the code written below, control and series attribute columns are treated quite similarly. In case
+    internally we want to perform something different depending on series attribute columns, it needs to be
+    done within the _predict function of the child class that is being implemented (refer models/models.py)
     """
 
     def __init__(self, _dataspec: TimeSeriesDataSpec):
@@ -45,9 +49,9 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
 
         controls, states = inputs
         
-        controls = tf.convert_to_tensor(controls) 
+        # controls = tf.convert_to_tensor(controls) 
         
-        states = tf.convert_to_tensor(states)
+        # states = tf.convert_to_tensor(states)
         # Note that state only has the shape batch x context_window x state_feature_size
 
         predictions = []
@@ -82,8 +86,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
                          if (len(self.dataspec.control_input_columns) + len(self.dataspec.series_attribute_columns))>0 else 1
         controls = timeseries[:, :, 0:dim_controls]
         states = timeseries[:,:,dim_controls:]
-        return (controls, states[:,0:config.context_window]), \
-                states[:,(config.context_window+config.lead_gap):config.context_window+config.lead_gap+config.forecast_horizon]
+        return (tf.convert_to_tensor(controls), tf.convert_to_tensor(states[:,0:config.context_window])), \
+                tf.convert_to_tensor(states[:,(config.context_window+config.lead_gap):config.context_window+config.lead_gap+config.forecast_horizon])
 
     def _make_subset(self,timeseries, config):
         """
@@ -172,10 +176,10 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         train_data= self.preprocessor.simple_fit_predict(train_data)
         self._build_model(train_config)
         self.dataspec = train_data.dataset_spec
-        self.dataspec.control_input_columns.remove('nudge_0')
+        self.dataspec.control_input_columns.remove('nudge_0') #HACK remove this line
         self.set_params(model_params)
         dataset = self._make_dataset(train_data, train_config)
-        history = self.fit(dataset,  verbose=1,
+        history = self.fit(dataset,  verbose=0,
                         epochs=train_config.epochs, shuffle=True)
         return history # Log data returned
 
@@ -191,18 +195,25 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         
         if not os.path.isdir(os.path.join(model_save_folder, "sklearn")):
             os.makedirs(os.path.join(model_save_folder, "sklearn"))
-
+        
+        if not os.path.isdir(os.path.join(model_save_folder, "keras")):
+            os.makedirs(os.path.join(model_save_folder, "keras"))
+        
         self.preprocessor.save(os.path.join(model_save_folder, "sklearn/preprocessor.pickle"))
-        self.save_weights(os.path.join(model_save_folder, "keras"))
+        self.save_weights(os.path.join(model_save_folder,"keras", "weights"), save_format='tf')
 
-    def load_model(self, model_save_folder, train_config):
+    def load_model(self, model_save_folder, train_config, dataset):
         """
         Loads a saved model given a file path and the original training config.
         """
         self.preprocessor = simple_transform.SimplePreprocessModel()
         self.dataspec = self.preprocessor.load(os.path.join(model_save_folder, "sklearn/preprocessor.pickle"))
         self._build_model(train_config)
-        self.load_weights(os.path.join(model_save_folder, "keras"))
+        self.config = train_config
+        
+        #Reason for below line https://stackoverflow.com/questions/63658086/tensorflow-2-0-valueerror-while-loading-weights-from-h5-file
+        self.simple_predict(dataset, train_config)
+        self.load_weights(os.path.join(model_save_folder, "keras", "weights"))
 
     def simple_evaluate(self, ts_data: TimeSeriesDataset, eval_config: TimeSeriesEvaluationConfig):
         """
@@ -303,7 +314,7 @@ class BaseTransformationModel(tf.keras.Model, abc.ABC):
         return output
 
     @staticmethod
-    def _get_data(inputs, cols):
+    def _get_data(inputs: pd.DataFrame, cols: List[str]):
         #Returning numpy arrays
         return inputs[cols].values
 
@@ -366,3 +377,33 @@ class BaseGenerationModel:
         # will need additional methods
         return
 
+class BaseTabularPredictor(abc.ABC):
+    """The base abstract class used by nudge optimizers, reward predictors and estimators.
+    This class may be making some of the other classes such as BaseTransformationModel a bit redundant, may need to be fixed
+    in the future. 
+    """
+    def __init__(self, _dataspec):
+        """Initialize dataspec
+
+        Args:
+            _dataspec (NudgeOptimizationDataSpec): Since it is used primarily for the above models
+             
+        """
+        self._dataspec = _dataspec
+    
+    @abc.abstractmethod
+    def _predict(self, state: np.array):
+        """ Needs to return predicted columns from numpy array"""
+        pass
+
+    @abc.abstractmethod
+    def set_params(self, params: Dict):
+        """
+        Meant for initialization parameters (for example model loading in reward predictors)
+        """
+        pass
+    
+    @staticmethod
+    def _get_data(inputs: pd.DataFrame, cols: List[str]):
+        return inputs[cols].values
+    

@@ -1,0 +1,15 @@
+,time,cause,effect_on,effect
+0,0,1,VariableName.sleep_duration,0.06218879404677646
+1,1,1,VariableName.sleep_duration,0.033486403883452295
+2,2,1,VariableName.sleep_duration,0.0365579598509229
+3,3,1,VariableName.sleep_duration,0.06725625286252096
+4,4,1,VariableName.sleep_duration,0.010789008418365026
+5,5,1,VariableName.sleep_duration,0.0571957270302898
+6,6,1,VariableName.sleep_duration,0.024902450751178806
+7,0,sleep_duration,VariableName.sbp,-0.2860757465489678
+8,1,sleep_duration,VariableName.sbp,0.027718101322305344
+9,2,sleep_duration,VariableName.sbp,0.017252294798004886
+10,3,sleep_duration,VariableName.sbp,0.021579948857727627
+11,4,sleep_duration,VariableName.sbp,0.001572128372171161
+12,5,sleep_duration,VariableName.sbp,0.04849135346319686
+13,6,sleep_duration,VariableName.sbp,0.1694619197355619

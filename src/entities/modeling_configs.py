@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 from entities.key_entities import TimeSeriesDataSpec, TabularDataSpec
-from entities.all_enums import OptimizerType, LossMetric, DistributionType, ModelClass, ColumnTransform
+from entities.all_enums import OptimizerType, LossMetric, DistributionType, ModelClass, ColumnTransform, NudgeOptimizerModelClass, RewardPredictorClass, EstimatorClass
 import tensorflow as tf
 
 
@@ -183,8 +183,20 @@ class TabularTrainingConfig(TabularBaseConfig):
     
     def get_loss(self):
         self.loss.get_loss()
-    
 
+
+
+class NudgeOptimizationConfig(BaseModel):
+    model_class: NudgeOptimizerModelClass
+    model_parameters: Dict
+
+class RewardPredictorConfig(BaseModel):
+    model_class: RewardPredictorClass
+    model_parameters: Dict
+
+class EstimatorConfig(BaseModel):
+    model_class: EstimatorClass
+    model_parameters: Dict
 """
 The rest of the classes below are not implemented yet, support can be added when required.
 """

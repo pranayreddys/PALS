@@ -1,0 +1,36 @@
+{
+    "training": false,
+    "presplit": true,
+    "test_path": "simple_data_generation/3var_noncollinear/data.csv",
+    "dataset_spec":{
+        "data_source": "simple_data_generation/3var_noncollinear/data.csv",
+        "data_format": "csv",
+        "time_column": "time",
+        "series_id_column": "user_id",
+        "series_attribute_columns": [],
+        "control_input_columns": ["VariableName.salt_intake", "VariableName.step_count", "VariableName.sleep_duration"],
+        "dependent_state_columns": [],
+        "independent_state_columns": ["VariableName.sbp"]
+    },
+    "training_config":{
+        "model_save_folder": "logs/simple_experiment1",
+        "column_transformations":{
+            "VariableName.sbp": "Identity"
+        },
+        "model_class": "DelayedEffectModel",
+        "model_parameters": {},
+        "context_window": 6,
+        "lead_gap":0,
+        "forecast_horizon":2,
+        "metrics": ["MeanAbsoluteError", "MeanSquaredError", "MeanSquaredLogarithmicError"],
+        "optimizer": {
+            "optimizer_type": "Adam"
+        },
+        "train_loss_function":{
+            "loss_type": "MeanAbsoluteError",
+            "learning_rate": 0.001
+        },
+        "epochs": 30,
+        "batchsize": 256
+    }
+}

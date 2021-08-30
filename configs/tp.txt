@@ -1,0 +1,12 @@
+Nudge Greedy
+EstimatorClass.DoublyRobustEstimator -1.480079186391419
+EstimatorClass.SelfNormalizedEstimator -1.616352096130641
+EstimatorClass.ModelTheWorldEstimator -1.4667074061168575
+
+EstimatorClass.DoublyRobustEstimator -0.7764433622432918
+EstimatorClass.SelfNormalizedEstimator -0.7764433641711296
+EstimatorClass.ModelTheWorldEstimator -0.7728378974350386
+
+EstimatorClass.DoublyRobustEstimator -1.480079186391419
+EstimatorClass.SelfNormalizedEstimator -1.616352096130641
+EstimatorClass.ModelTheWorldEstimator -1.4667074061168575

@@ -1,0 +1,27 @@
+{
+    "dataset_spec":{
+        "data_source": "simple_data_generation/user_features/test_reward_predictor.csv",
+        "data_format": "csv",
+        "action_column": "nudge",
+        "reward_column": "reward",
+        "state_columns": ["VariableName.sbp_0","VariableName.sbp_1","VariableName.sbp_2","VariableName.sbp_3","VariableName.sbp_4","VariableName.sbp_5","VariableName.dbp_0","VariableName.dbp_1","VariableName.dbp_2","VariableName.dbp_3","VariableName.dbp_4","VariableName.dbp_5","VariableName.salt_intake_0","VariableName.salt_intake_1","VariableName.salt_intake_2","VariableName.salt_intake_3","VariableName.salt_intake_4","VariableName.salt_intake_5","VariableName.step_count_0","VariableName.step_count_1","VariableName.step_count_2","VariableName.step_count_3","VariableName.step_count_4","VariableName.step_count_5","VariableName.sleep_duration_0","VariableName.sleep_duration_1","VariableName.sleep_duration_2","VariableName.sleep_duration_3","VariableName.sleep_duration_4","VariableName.sleep_duration_5"],
+        "sampling_policy": ["sampling_policy_0", "sampling_policy_1"]
+    },
+    "reward_predictor": {
+        "model_class": "RewardPredictorFromTimeSeries",
+        "model_parameters": {
+            "train_file_path": "configs/config_scaled.json",
+            "predict_file_path": "configs/config_scaled.json"
+        }
+    },
+    "nudge_optimizer": {
+        "model_class": "NudgeOptimizerToy2",
+        "model_parameters":{}
+    },
+    "estimators": [
+                    {"model_class": "DoublyRobustEstimator", "model_parameters": {}},
+                    {"model_class": "SelfNormalizedEstimator", "model_parameters" : {}},
+                    {"model_class": "ModelTheWorldEstimator", "model_parameters" : {"oracle": false}}
+                ]
+                
+}

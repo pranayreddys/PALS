@@ -1,5 +1,5 @@
 import pandas as pd
-from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec
+from entities.key_entities import TabularDataSpec, TimeSeriesDataSpec, NudgeOptimizationDataSpec
 from utils.read_write_utils import read_data
 from sklearn.model_selection import train_test_split
 from itertools import chain
@@ -136,3 +136,42 @@ class TimeSeriesDataset:
             val_split_end = int(size*split_percentages[1])
             test_split_start = val_split_end-trainingconfig.context_window-trainingconfig.lead_gap
 
+class NudgeOptimizationDataset:
+    """Used for counterfactual policy evaluators
+    """
+    def __init__(self, _dataset_spec: NudgeOptimizationDataSpec, blank_dataset=False):
+        self.dataset_spec =  _dataset_spec  
+        self.data = pd.DataFrame()
+        self.possible_actions = None
+        if not blank_dataset:
+            self.data = read_data(_dataset_spec.data_source, _dataset_spec.data_format)
+            self._validate()
+            self._sort_values()
+    
+
+    def _check_existence(self, col_list):
+        columns = set(self.data.columns)
+        assert(set(col_list).issubset(columns))
+
+    def _validate(self):
+        columns = set(self.data.columns)
+        if self.dataset_spec.time_column is not None:
+            assert self.dataset_spec.time_column in columns
+        assert self.dataset_spec.action_column in columns
+        assert self.dataset_spec.reward_column in columns
+        if self.dataset_spec.series_id_column is not None:
+            assert self.dataset_spec.series_id_column in columns
+        self._check_existence(self.dataset_spec.state_columns)
+        possible_actions = list(self.data[self.dataset_spec.action_column].unique())
+        set(possible_actions).issubset(self.dataset_spec.sampling_policy)
+        return
+
+    def _sort_values(self):
+        if self.dataset_spec.time_column:
+            self.data.sort_values(self.dataset_spec.time_column, inplace=True)
+
+    def subset_per_id(self):
+        if self.dataset_spec.series_id_column:
+            return self.data.groupby(self.dataset_spec.series_id_column)
+        else:
+            return self.data

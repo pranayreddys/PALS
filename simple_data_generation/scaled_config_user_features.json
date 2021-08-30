@@ -1,0 +1,174 @@
+{
+    "variable_specs": [
+        {
+            "name": "sleep_duration",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 1.0
+            },
+            "min_bound": -3.0,
+            "max_bound" :  3.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.005
+            },
+            "healthy_baseline": 0.1
+        },
+        {
+            "name": "salt_intake",
+            "init_distribution_type": "beta",
+            "init_params": {
+                "a": 6.0,
+                "b": 2.0
+            },
+            "min_bound": 0.0,
+            "max_bound" :  1.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.005
+            },
+            "healthy_baseline": 0.7
+        },
+        {
+            "name": "step_count",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 1.0
+            },
+            "min_bound": -5.0,
+            "max_bound" :  5.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.005
+            },
+            "healthy_baseline": 0.2
+        }
+
+    ],
+    "final_output_specs": [
+        {
+            "name": "sbp",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 0.8
+            },
+            "min_bound": -7.0,
+            "max_bound" :  7.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.002
+            }
+        },
+        {
+            "name": "dbp",
+            "init_distribution_type": "normal",
+            "init_params": {
+                "loc": 0.0,
+                "scale": 0.6
+            },
+            "min_bound": -7.0,
+            "max_bound" :  7.0,
+            "observation_noise_type" : "normal",
+            "observation_noise_params": {
+                "loc": 0.0,
+                "scale": 0.05
+            }
+        }  
+    ],
+    "population_size": 200,
+    "nudge_spec": {
+        "num_actions": 2,
+        "init_period": 14,
+        "cycle_period": 7,
+        "washout_period": 7
+    },
+    "cause_effect": {
+        "nudge_uat":
+            {"1" : {
+                "sleep_duration":{
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.3
+                },
+                "salt_intake":{
+                    "lag": 7,
+                    "min_bound": 0,
+                    "max_bound": 0.1,
+                    "negative": true
+                },
+                "step_count":{
+                    "lag": 7,
+                    "min_bound": 0,
+                    "max_bound": 0.4
+                }
+            },
+            "2" : {
+                "sleep_duration":{
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.1
+                },
+                "salt_intake":{
+                    "lag": 7,
+                    "min_bound": 0,
+                    "max_bound": 0.2,
+                    "negative": true
+                },
+                "step_count":{
+                    "lag": 7,
+                    "min_bound": 0,
+                    "max_bound": 0.15
+                }
+            }
+        },
+        "uat_bps":{
+            "salt_intake": {
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.5
+                },
+                "dbp": {
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound":  0.25
+                }
+            },
+            "sleep_duration":{
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.4,
+                    "negative": true
+                },
+                "dbp": {
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound":  0.2,
+                    "negative": true
+                }
+            },
+            "step_count":{
+                "sbp": {
+                    "lag" : 7,
+                    "min_bound": 0.0,
+                    "max_bound": 0.35,
+                    "negative": true
+                },
+                "dbp": {
+                    "lag": 7,
+                    "min_bound": 0.0,
+                    "max_bound":  0.22,
+                    "negative": true
+                }
+            } 
+        }
+    }
+}

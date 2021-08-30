@@ -1,9 +1,15 @@
 import enum
 
+""" This file contains the types allowed in the configuration files.
+Whenever a new type needs to be implemented, it also needs to be added here.
+
+"""
 @enum.unique
 class OptimizerType(str, enum.Enum):
 	"""
-	This enum is used in the Optimizer definition
+	This enum is used in the Optimizer definition.
+	By default it calls the tensorflow implementation directly - if there further 
+	tensorflow optimizers that need to be added, just writing the optimizer type here is enough.
 	"""
 	Adam = 'Adam'
 	SGD = 'SGD'	
@@ -17,7 +23,7 @@ class OptimizerType(str, enum.Enum):
 @enum.unique
 class DistributionType(str, enum.Enum):
 	"""
-	List of distribution types, not used in code yet.
+	List of distribution types, not used in code yet. 
 	"""
 	Normal = 'Normal'
 	Bernoulli = 'Bernoulli'
@@ -29,7 +35,8 @@ class DistributionType(str, enum.Enum):
 @enum.unique
 class LossMetric(str, enum.Enum):
 	"""
-	List of supported inbuilt loss metrics.
+	List of supported inbuilt loss metrics. Any other keras losses can just be added directly here if
+	no additional parameters are required.
 	"""
 	MeanSquaredError = 'MeanSquaredError'
 	MeanAbsoluteError = 'MeanAbsoluteError'
@@ -39,34 +46,60 @@ class LossMetric(str, enum.Enum):
 
 @enum.unique
 class TimeUnit(str, enum.Enum):
+	"""TODO: Not utilized yet. 
+	"""
 	Second = 'second'
 	Minute = 'minute'
 	Hour = 'hour'
 	Day = 'day'
-	#TODO
 
 @enum.unique
 class ModelClass(str, enum.Enum):
 	"""
-	List of valid class names for modelling
+	List of valid class names for modelling. Any additional models that are implemented in models.models.py
+	need to be added here.
 	"""
 	SimpleVAR = "SimpleVAR"
 	UatVAR = "UatVAR"
 	UatBpVAR = "UatBpVAR"
 	DelayedEffectModel = "DelayedEffectModel"
 	BpDelayedEffectModel = 'BpDelayedEffectModel'
+	BpDelayedEffectModelUserFeature = 'BpDelayedEffectModelUserFeature'
 
 
 @enum.unique
-class ModelCallMode(str, enum.Enum):
-	pass
-	#TODO - this will different modes of model call
-	#call implementation might be different during prediction and fitting
+class NudgeOptimizerModelClass(str, enum.Enum):
+	"""
+	List of valid class names for nudge optimization. Additional implemented optimizers need to be added here.
+	"""
+	NudgeOptimizerToy = "NudgeOptimizerToy"
+	UniformActionRecommender = "UniformActionRecommender"
+	NudgeOptimizerFromTimeSeries = "NudgeOptimizerFromTimeSeries"
+
+
+@enum.unique
+class EstimatorClass(str, enum.Enum):
+	"""
+		List of valid class names for estimators. Additional implemented optimizers need to be added here.
+	"""
+	DoublyRobustEstimator = "DoublyRobustEstimator"
+	SelfNormalizedEstimator = "SelfNormalizedEstimator"
+	ModelTheWorldEstimator = "ModelTheWorldEstimator"
+	IPS = "IPS"
+
+@enum.unique
+class RewardPredictorClass(str, enum.Enum):
+	"""
+	Enum utilized in the code for different types of reward predictors. Refer models.reward_predictors.py for additional details.
+	"""
+	RewardPredictorToy = "RewardPredictorToy"
+	RewardPredictorFromTimeSeries = "RewardPredictorFromTimeSeries"
+
 
 @enum.unique
 class ColumnTransform(str, enum.Enum):
 	"""
-	Supported column transformations
+	Supported column transformations, these are all implemented in simple_transformations.py
 	"""
 	OneHotEncoder = 'OneHotEncoder'
 	MinMaxScaler = 'MinMaxScaler'
@@ -90,6 +123,8 @@ class ExperimentMode(str, enum.Enum):
 	In this case, if data is provided from 0..T, time would be split into train chunks (0..T1),
 	val chunk (T1..T2) and final test chunk (T2..T).
 	TODO: This mode has not been implemented, refer the file :class:`~src.dataset.dataset.TimeSeriesDataset` for implementation.
+	Note that as a workaround, files can be presplit (i.e. explicitly constructing train.csv/val.csv/test.csv), and provided
+	to the runner.
 
 
 	In additon to these two modes, there is an additional presplit option, which requires different train,

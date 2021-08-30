@@ -1,0 +1,30 @@
+{
+    "dataset_spec":{
+        "data_source": "toybandit_with_reward.csv",
+        "data_format": "csv",
+        "action_column": "Action",
+        "reward_column": "reward",
+        "state_columns": ["State_0","State_1","State_2","State_3","State_4"],
+        "sampling_policy": ["Sampling_policy_0", "Sampling_policy_1", "Sampling_policy_2", "Sampling_policy_3","Sampling_policy_4"]
+    },
+    "reward_predictor": {
+        "model_class": "RewardPredictorToy",
+        "model_parameters": {"noise": 1, "bias": 0}
+    },
+    "nudge_optimizer": {
+        "model_class": "NudgeOptimizerToy",
+        "model_parameters":{"p": 0.2}
+    },
+    "estimators": [
+                    {"model_class": "DoublyRobustEstimator", "model_parameters": {}},
+                    {"model_class": "SelfNormalizedEstimator", "model_parameters" : {}}, 
+                    {
+                        "model_class": "ModelTheWorldEstimator", 
+                        "model_parameters" : {
+                            "oracle": true, 
+                            "oracle_columns": ["State_0","State_1","State_2","State_3","State_4"]
+                        }
+                    }
+                ]
+                
+}

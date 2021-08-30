@@ -1,7 +1,10 @@
 """
-The main file for data generation.
-The arguments are: a) Config file (specifying params of data generation)
-b) Output folder - All the data generated along with the effect profile is dumped to this file
+This file is almost exactly the same as gen.py, but with slight modifications (introducing a category variable for each user).
+The category variable determines the psychological response of a user to different nudges.
+The current design is quite hardcoded, can be improved upon if this is a common use-case by introducing
+category itself as a variable in the config file.
+This code was primarily used to generate data and test out the reward predictor & nudge optimizer modules.
+Please refer gen.py to understand the basic generation process and implementation.
 """
 from pydantic import BaseModel, parse_file_as
 import enum
@@ -44,16 +47,12 @@ class CurveType(str, enum.Enum):
     unimodal = 'unimodal'
 
 class VariableSpec(BaseModel):
-    """This class describes configuration parameters required for UAT/BP generation. 
-    Key params:
+    """
+    This class describes configuration parameters required for UAT/BP generation. Key params:
     name: a string of type VariableName (which is an enum)
-    
     init_distribution_type: Specifies the population-level distribution that a person's baseline numbers
     need to be sampled from
-    init_params: Specifies the params required for init_distribution_type - input assumed to be in numpy format
-    Note that for additional distributions, just a new enum needs to be defined in DistributionType. Params is handled
-    automatically by numpy.
-
+    init_params: Specifies the params required for init_distribution_type
     min_bound: The minimum possible value that can be taken by this variable
     max_bound: The maximum possible value that can be taken by this variable
     healthy_baseline: This is compulsory for UAT variables and optional otherwise. For UAT variables,
@@ -63,7 +62,7 @@ class VariableSpec(BaseModel):
     which cannot be predicted. This variable captures that distribution type.
     observation_noise_params: The parameters that need to be passed into the observation noise distribution. Noise will 
     be sampled with these params. 
-    """ 
+    """
     name: VariableName
     init_distribution_type: DistributionType
     init_params: Dict[str, float]
@@ -85,23 +84,6 @@ class Variable:
     These objects are used throughout while generating data.
     """
     def __init__(self, var_spec: VariableSpec):
-        """Initial variable object from the config
-
-        Args:
-            var_spec (VariableSpec): config of the variable
-        
-        Class Members:
-            self.min_bound: Variable cannot go below this value for any person in the population
-            self.max_bound: Variable cannot go above this value for any person in the population
-            self.value: Underlying value of the variable. Note that this is a hidden variable. 
-                        Observed variable is self.value + noise.
-            self.noise_type: Configuration for type of noise, currently supports only gaussian and beta
-            self.noise_params: Params of the distribution (example mean, std for gaussian). Params for normal
-                            distribution uses numpy format.
-            self.healthy_baseline: The number at which BP is stable, exceeding this number increases baseline BP, while
-            having BP less than this number decreases baseline BP (or vice versa depending on the variable semantics - e.g. steps follows the
-            opposite semantics)
-        """
         self.min_bound = var_spec.min_bound
         self.max_bound = var_spec.max_bound
         self.value = var_spec.sample()
@@ -131,11 +113,6 @@ class Effect(BaseModel):
     The class is currently being initialized to generate a random unimodal
     curve. For more realistic curves, more curve types can be added, along
     with the required behaviour/params for the same.
-    Important Args:
-        lag: For how many days the effect lasts
-        curve_type: Current support for only single curve type
-        return_to_mean: This parameter is used for generating delayed effect curves that have no effect
-        when the nudge is stopped, i.e. the user regresses back to mean/baseline.
     """
     lag: int
     curve_type: CurveType = CurveType.unimodal
@@ -148,7 +125,6 @@ class Effect(BaseModel):
     def effect(self):
         effect = self.__dict__.get('effect')
         if effect is None:
-            # Initialization of the Effect curve if uninitialized
             if self.curve_type==CurveType.unimodal:
                 lag = self.lag-1 if self.return_to_mean else self.lag 
                 e = np.random.uniform(self.min_bound, self.max_bound, lag)
@@ -188,10 +164,6 @@ class EffectProfile(BaseModel):
 
 
     def init_effect_profile(self, variable_specs: List[VariableSpec], final_output_specs: List[VariableSpec]):
-        """
-        Initializes the effect profiles for the variables (UATs & BPs), creating a numpy matrix 
-        for efficient computation. Refer 
-        """
         for v in self.nudge_uat.values():
             for e in v.values():
                 self.max_lag_nudge_uat= max(self.max_lag_nudge_uat, e.lag)
@@ -209,15 +181,7 @@ class EffectProfile(BaseModel):
                 if output_spec.name in self.uat_bps[var_spec.name]:
                     self.uat_bps_array[i,j::len(variable_specs)] = self.uat_bps[var_spec.name][output_spec.name].effect
     
-    def update_uat(self, nudges: List[int], state: Dict[VariableName, Variable], inertia: float):
-        """
-        Update equations written in a recursive fashion.
-        UAT[t] = UAT[t-1] + \Sum_{past nudges} Effect[past nudge].
-        This recursive method although intuitive for implementing,
-        is not very intuitive for visualization. Hence, for visualization of delayed effect
-        model, the cumulative sum across time is taken.
-        Refer to :func:`~EffectProfile.ret_effect_profile` for visualization.
-        """
+    def update_uat(self, nudges: List[int], state: Dict[VariableName, Variable], inertia: Dict[int, float]):
         nudges = nudges[-min(self.max_lag_nudge_uat, len(nudges)):]
         updated_variables : Dict[VariableName, float] = {}
         for i, nudge in enumerate(nudges[::-1]):
@@ -225,17 +189,14 @@ class EffectProfile(BaseModel):
                 for variable, effect in self.nudge_uat[nudge].items():
                     if effect.lag > i:
                         if variable in updated_variables:
-                            updated_variables[variable] += effect.effect[i]
+                            updated_variables[variable] += (inertia[nudge]* effect.effect[i])
                         else:
-                            updated_variables[variable] = effect.effect[i]
+                            updated_variables[variable] = (inertia[nudge]*effect.effect[i])
         
         for variable, increment in updated_variables.items():
             state[variable].update(increment)
     
-    def update_bp(self, uats: List[Dict[VariableName, Variable]], bps: Dict[VariableName, Variable], physiological_response: float):
-        """
-        Follows the similar 
-        """
+    def update_bp(self, uats: List[Dict[VariableName, Variable]], bps: Dict[VariableName, Variable]):
         updated_variables : Dict[VariableName, float] = {}
         uat_array = np.zeros((self.max_lag_uat_bp* len(uats[0])))
         for idx, uat in enumerate(uats[-1:-(self.max_lag_uat_bp+1):-1]):
@@ -248,10 +209,6 @@ class EffectProfile(BaseModel):
             bps[spec.name].update(increments[idx])
         
     def ret_effect_profile(self):
-        """
-        This function returns the effect profiles of Nudge-UAT and UAT-BP as visualizable CSVs.
-        
-        """
         ret_profile = []
         for nudge, cause_effect in self.nudge_uat.items():
             for variable, effect in cause_effect.items():
@@ -294,23 +251,16 @@ class Person:
     """
     def __init__(self,  user_id: int, variable_specs: List[VariableSpec], 
                 nudge_spec: NudgeGeneratorSpec,cause_effect: EffectProfile, 
-                physiological_response: VariableSpec, inertia: VariableSpec, final_output_spec: List[VariableSpec]):
+                final_output_spec: List[VariableSpec],category: bool):
         self.variables : Dict[VariableName,Variable] = \
             {spec.name: Variable(spec) for spec in variable_specs}
         self.gen_data: List[Dict[VariableName, float]] = [] 
         self.nudges = nudge_spec.get_nudge_perm()
         self.cause_effect = cause_effect
         self.user_id = user_id
-
-        ## These variables are being generated according to a distribution.
-        # Since ideally these variables are hidden and come from some observables, this
-        # part needs to be modified. Currently utilizing almost constant distributions
-        # to enable fitting for the time series modules.
-        self.physiological_response = physiological_response.sample()
-        self.inertia = inertia.sample()
-        
         self.final_outputs : Dict[VariableName, Variable] = \
             {spec.name: Variable(spec) for spec in final_output_spec}
+        self.category = category
 
     def observe_variables(self):
         output1 =  {str(k): v.observe() for k,v in self.variables.items()}
@@ -322,51 +272,38 @@ class Person:
     def gen(self):
         i = 0
         init_state = {str(k): v.value for k, v in self.variables.items()}
+        inertia_array = [{1: 1.0, 2: 0.2}, {1: 0.1, 2: 1.0}]
+        category_var = 0 if not self.category else 1
         uat_data = []
         bp_data = []
         past_uat= []
         past_bp = []
-
-        # Initial baseline period when nudges are not provided.
         while self.nudges[i]==0:
             uat, bp = self.observe_variables()
             past_uat.append(deepcopy(self.variables))
             uat_data.append(uat)
             bp_data.append(bp)
             i += 1
-        ########
-
-
-        # Cyclic period, now since nudges are provided, the update_uat and update_bp
-        # functions are used here.
+        
         while i<len(self.nudges):
-            self.cause_effect.update_uat(self.nudges[:(i+1)], self.variables, self.inertia)
+            self.cause_effect.update_uat(self.nudges[:(i+1)], self.variables, inertia_array[category_var])
             past_uat.append(deepcopy(self.variables))
-            self.cause_effect.update_bp(past_uat, self.final_outputs, self.physiological_response)
+            self.cause_effect.update_bp(past_uat, self.final_outputs)
             uat, bp = self.observe_variables()
             uat_data.append(uat)
             bp_data.append(bp)
             i += 1
         
-        # Just entering BP data into the UAT data array so that all values dumped together
-        # in a single file
+
         for idx, d in enumerate(uat_data):
             d.update(bp_data[idx])
-
-        
-        # Adding other parameters such as nudge order, user id, baseline numbers, physiological response
-        # and inertia (psychological response). Note that although these variables are present, currently
-        # they are fixed across the population in this code (the configs specify almost constant numbers). One example where they vary is provided in the file
-        # generate_based_on_user_category.py. Additional changes to the data generation, based on the requirement is needed
-        # to support inertia and physiological response
         ret_df = pd.DataFrame(uat_data)
         ret_df["nudge"] = self.nudges
         ret_df["time"] = np.array(list(range(ret_df.shape[0])))
         ret_df["user_id"] = self.user_id
         for k, v in init_state.items():
             ret_df["init_state_"+k] = v
-        ret_df["physiological_response"] = self.physiological_response
-        ret_df["inertia"] = self.inertia
+        ret_df["category"] = category_var 
         return ret_df
 
 
@@ -375,13 +312,10 @@ class Main(BaseModel):
     population_size: int
     nudge_spec: NudgeGeneratorSpec
     cause_effect: EffectProfile
-    physiological_response: VariableSpec
-    inertia : VariableSpec
     final_output_specs: List[VariableSpec]
     def generate_data(self):
         self.cause_effect.init_effect_profile(self.variable_specs, self.final_output_specs)
-        people = [Person(user_id, self.variable_specs, self.nudge_spec, self.cause_effect,
-                        self.physiological_response, self.inertia, self.final_output_specs) \
+        people = [Person(user_id, self.variable_specs, self.nudge_spec, self.cause_effect, self.final_output_specs, user_id<(self.population_size//2)) \
                      for user_id in range(self.population_size)]
         
         return pd.concat([person.gen() for person in people]), self.cause_effect.ret_effect_profile()
@@ -389,7 +323,7 @@ class Main(BaseModel):
 if __name__== "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default="scaled_config.json")
-    parser.add_argument('--output_folder', default="3var_noncollinear")
+    parser.add_argument('--output_folder', default="user_features2")
     args = parser.parse_args()
     r = parse_file_as(Main, args.config_path)
     os.makedirs(args.output_folder, exist_ok=False)
