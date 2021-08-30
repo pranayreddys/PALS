@@ -1,3 +1,6 @@
+"""The code in this file is used for creating different
+policies for recommending health interventions/nudges.
+"""
 import abc
 from entities.key_entities import NudgeOptimizationDataSpec
 from dataset.dataset import NudgeOptimizationDataset

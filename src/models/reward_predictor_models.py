@@ -1,5 +1,4 @@
-"""
-TODO: User level reward functions need to be designed here.
+"""The code here is utilized for reward prediction modules for the counterfactual evaluation.
 """
 from entities.key_entities import NudgeOptimizationDataSpec
 import numpy as np

@@ -86,22 +86,3 @@ class SimplePreprocessModel():
         
         return predictions
 
-
-
-# class SimpleTransformationsModel(BaseTransformationModel):
-# #TODO: when required
-#     def __init__(self,_dataspec: TabularDataSpec, _model_config):
-#         super(BaseTransformationModel, self).__init__()
-#         self.dataspec = _dataspec
-#         #TODO: shall we assume _model_config is a list of transformations 
-#         # to be applied to individual input columns - some classes already exist
-        
-#     def _simple
-#     def _predict(self,independent_vals):
-
-#         pass
-#       #TODO: need to predict the transformation
-# class Normalize(BaseTransformationModel):
-    
-#     def _predict(self, independent_vals):
-

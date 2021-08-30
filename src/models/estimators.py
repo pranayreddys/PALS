@@ -1,3 +1,6 @@
+"""The code in this file is used for creating net reward estimators based on logs.
+Includes implementations for doubly robust estimator, IPS, self normalized estimator
+"""
 from models.base_models import BaseTabularPredictor
 from entities.key_entities import NudgeOptimizationDataSpec
 from dataset.dataset import NudgeOptimizationDataset
