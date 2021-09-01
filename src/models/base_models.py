@@ -179,8 +179,8 @@ class BaseTimeSeriesModel(tf.keras.Model, abc.ABC):
         self.dataspec.control_input_columns.remove('nudge_0') #HACK remove this line
         self.set_params(model_params)
         dataset = self._make_dataset(train_data, train_config)
-        history = self.fit(dataset,  verbose=0,
-                        epochs=train_config.epochs, shuffle=True)
+        history = self.fit(dataset,epochs=train_config.epochs, shuffle=True)
+        # Add verbose=0 here to stop output
         return history # Log data returned
 
     def save_model(self, model_save_folder):

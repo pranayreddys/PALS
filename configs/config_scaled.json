@@ -1,10 +1,9 @@
 {
-    "presplit": true,
-    "train_path": "simple_data_generation/o_scaled_wo_inertia/train.csv",
-    "val_path": "simple_data_generation/o_scaled_wo_inertia/train.csv",
-    "test_path": "simple_data_generation/o_scaled_wo_inertia/train.csv",
+    "presplit": false,
+    "split_percentages": [0.6, 0.2, 0.2],
+    "train_path": "simple_data_generation/o_scaled_wo_inertia/data.csv",
     "dataset_spec":{
-        "data_source": "simple_data_generation/o_scaled_wo_inertia/train.csv",
+        "data_source": "simple_data_generation/o_scaled_wo_inertia/data.csv",
         "data_format": "csv",
         "time_column": "time",
         "series_id_column": "user_id",
@@ -14,7 +13,7 @@
         "independent_state_columns": ["VariableName.salt_intake", "VariableName.step_count", "VariableName.sleep_duration"]
     },
     "training_config":{
-        "model_save_folder": "logs/simple_experiment1",
+        "model_save_folder": "logs/latest",
         "column_transformations":{
             "nudge": "OneHotEncoder"
         },
@@ -30,7 +29,7 @@
         "train_loss_function":{
             "loss_type": "MeanAbsoluteError"
         },
-        "epochs": 10,
+        "epochs": 30,
         "batchsize": 256
     },
     "test_output": "misc/tp.csv",
